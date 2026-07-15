@@ -1,0 +1,45 @@
+# Force LF line endings for all text files, in every scenario:
+# - checkout on Windows / WSL / macOS / Linux always produces LF in the working tree
+# - commit always normalizes to LF in the repository
+# This prevents CRLF-related failures (e.g. `env: 'bash\r': No such file or directory`).
+
+* text=auto eol=lf
+
+# Shell / executable scripts must never be CRLF
+*.sh text eol=lf
+*.bash text eol=lf
+
+# Common config & source formats (explicit for clarity)
+*.md text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.json text eol=lf
+*.toml text eol=lf
+*.go text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.js text eol=lf
+*.css text eol=lf
+*.html text eol=lf
+Makefile text eol=lf
+Dockerfile text eol=lf
+
+# Windows-only scripts are the sole exception: they require CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary files — never touch line endings
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.svg binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+*.gz binary
+*.tar binary
+*.zip binary
+*.pdf binary
