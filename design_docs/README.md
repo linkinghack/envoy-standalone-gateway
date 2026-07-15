@@ -5,7 +5,8 @@
 | 子目录 | 内容 |
 |---|---|
 | [`requirements/`](requirements/) | 需求分析：功能需求、非功能需求、用户画像、场景分析 |
-| [`system_design/`](system_design/) | 系统设计：总体架构、模块设计、配置协议规范、API 设计 |
-| [`dev_manage/`](dev_manage/) | 研发管理：路线图、里程碑规划、任务拆分、开发规范 |
+| [`system_design/`](system_design/) | 系统设计：总体架构、模块设计、功能该要设计、详细设计、配置协议规范 |
+| [`dev_manage/`](dev_manage/) | 研发管理：路线图、里程碑规划、任务拆分、开发规范；其中 dev_manage/dev_design/ 存放技术选型变更说明与补充设计或设计决策、ADR记录等 |
 
 文档命名约定：`yymmdd-N-<主题>.md`，yymmdd为创建日期，N为当日按创建顺序递增。
+
