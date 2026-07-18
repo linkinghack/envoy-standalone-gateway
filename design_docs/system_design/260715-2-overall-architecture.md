@@ -137,13 +137,13 @@ M1 交付 T1、T2；T3 随 FR-5.3（P1）交付。
 
 ## 8. 后续设计文档清单（按优先序）
 
-1. **抽象协议规范 v0**（system_design，M0 前置，攻坚 RK1）
-2. 编译层与 IR 设计（含 escape hatch 合成、三层校验细节）
-3. 下发层设计（xDS snapshot 生命周期；static 模式 hot restart 协调协议）
-4. 配置域与发布流设计（版本模型、diff、回滚、文件真源布局）
-5. 控制台信息架构与 API 契约（OpenAPI）
-6. 状态采集与统计模型设计
-7. k8s 环境感知模块设计（P1 阶段）
+1. **抽象协议规范 v0**（system_design，M0 前置，攻坚 RK1）——✅ [`260716-1-gateway-config-protocol-v0.md`](260716-1-gateway-config-protocol-v0.md)
+2. 编译层与 IR 设计（含 escape hatch 合成、三层校验细节）——✅ [`260716-2-compile-ir-design.md`](260716-2-compile-ir-design.md)
+3. 下发层设计（xDS snapshot 生命周期；static 模式 hot restart 协调协议）——✅ [`260717-1-deliver-layer-design.md`](260717-1-deliver-layer-design.md)
+4. 配置域与发布流设计（版本模型、diff、回滚、文件真源布局）——✅ [`260717-2-config-domain-design.md`](260717-2-config-domain-design.md)
+5. 控制台信息架构与 API 契约（OpenAPI）——✅ [`260717-3-console-api-design.md`](260717-3-console-api-design.md)
+6. 状态采集与统计模型设计——✅ [`260717-4-state-collection-design.md`](260717-4-state-collection-design.md)
+7. k8s 环境感知模块设计（P1 阶段）——✅ [`260717-5-k8s-disco-design.md`](260717-5-k8s-disco-design.md)
 
 ## 9. 未决事项（Open Decisions）
 
