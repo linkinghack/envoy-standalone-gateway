@@ -1,6 +1,6 @@
 # T4 internal/compile F3：Builder 与策略映射
 
-- **状态**: 未开始
+- **状态**: 已完成
 - **依赖**: T3
 - **设计依据**: [编译层 §3/F3（Builder 表 + 策略实现映射表）、§5 命名规约](../../../../system_design/260716-2-compile-ir-design.md)、协议 §5 映射概览
 
@@ -27,4 +27,22 @@
 
 ## 进展记录
 
-（接手会话在此追加）
+### 2026-07-19 完成
+
+**交付**：`internal/compile/` 新增 `names.go`（命名规约）、`build.go`（build 编排 + buildContext）、`build_listener.go`、`build_route.go`、`build_upstream.go`、`build_policy.go`（策略归一化 + PolicyBuilder + JWT 装配），测试 5 个文件约 229 个用例/断言点全绿；`make build && make test && make lint` 全绿。Builder 以包内可单测函数交付，未动 `Compile()` 接线（T5）。
+
+**C4 决议（jwt providers 聚合去重键）**：`issuer + "|" + 规范化 jwks 来源`（`uri:` + TrimSpace(uri) 或 `file:` + file）；audiences 不参与去重——同一 provider 的不同受众经 requirement_map 的 `provider_and_audiences` 表达。provider 名内容寻址：`jwt/<sha256(key) 前 8 位 hex>`，与收集顺序无关、跨 Listener 稳定。requirement 名：provider 名（无 audiences）或 `provider:aud1,aud2`；`jwt.optional=true` → 固定 requirement `allow-missing`（映射 Envoy allow_missing：token 缺失放行、存在仍校验）。
+
+**与设计的出入/实现决策（非静默偏离）**：
+
+1. `rateLimit.key`（clientIP | header:<name>）M0 不生效：Envoy 本地限流的 descriptor entry 是静态键值，无法表达按客户端 IP/请求头动态分桶（动态键属全局限流 service 能力）。M0 per-rule 落令牌桶（requests/unit/burst），代码注释与本记录标明。
+2. `Listener.http.http3`（P2）预留不生效，不生成 QUIC。
+3. redirect `code` 省略默认 301（MOVED_PERMANENTLY）；支持 301/302/303/307/308，其余值报 build 错误。
+4. `healthCheck` 的 interval/timeout/threshold 协议未声明默认值：缺省不设置，由 F6 PGV 把关。
+5. cors per-route 配置消息是 `extensions.filters.http.cors.v3.CorsPolicy`（非 route.v3.CorsPolicy），实现按前者。
+6. `WeightedCluster.total_weight` 已被 Envoy 废弃（自动求和），不设置。
+7. `crt/<listener>/<n>` 命名（SDS Secret）随 T5 形态化落地时引入，本 task 证书走文件路径内联。
+8. L4/UDP Listener、`kubernetesService` 上游、extAuth/ipAccess/basicAuth 策略在 build 阶段显式报「not implemented in M0」错误（不静默跳过）。
+9. 远程 JWKS 自动生成抓取集群 `jwt-jwks/<host:port>`（STRICT_DNS + https 时上游 TLS + SNI），HttpUri.timeout 取 5s（PGV 必填）。
+10. HCM RDS ConfigSource 固定 ADS（逻辑资源形态），static 内联属 F5 职责。
+11. `jwt_authn` per-rule 配置用 `requirement_name` 引用 requirement_map；filter 常驻链 + 默认 pass-through 经「无 providers/无 requirement_map、无 filter 级 token bucket、cors 空配置」实现，链结构不随策略增删抖动。
