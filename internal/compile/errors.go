@@ -79,6 +79,16 @@ func linkError(origin protocol.Origin, kind protocol.Kind, name, path, format st
 	}
 }
 
+// buildError 构造一条 F3（build 阶段）错误。
+func buildError(origin protocol.Origin, kind protocol.Kind, name, path, format string, args ...any) CompileError {
+	return CompileError{
+		Stage:    StageBuild,
+		Source:   srcRef(origin, kind, name, path),
+		Message:  fmt.Sprintf(format, args...),
+		Severity: SeverityError,
+	}
+}
+
 // hasErrors 报告错误集合中是否有 Error 级条目（Warning 不阻断阶段间流转）。
 func hasErrors(errs []CompileError) bool {
 	for _, e := range errs {
