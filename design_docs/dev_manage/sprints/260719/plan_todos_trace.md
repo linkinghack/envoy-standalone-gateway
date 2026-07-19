@@ -11,7 +11,7 @@
 
 | ID | 任务 | 状态 | 依赖 | 验收锚点 |
 |---|---|---|---|---|
-| T1 | 仓库工程基线（module/目录/Makefile/lint/CI） | 未开始 | — | A8 |
+| T1 | 仓库工程基线（module/目录/Makefile/lint/CI） | 已完成 | — | A8 |
 | T2 | internal/protocol：类型、strict decode、loader、defaults、JSON Schema | 未开始 | T1 | A1(输入侧)、C3 |
 | T3 | internal/compile F2：链接与语义校验 + CompileError 模型 | 未开始 | T2 | A5 |
 | T4 | internal/compile F3：四类 Builder 与策略映射 | 未开始 | T3 | A1、C4 |
@@ -26,6 +26,7 @@
 | 日期 | 事项 |
 |---|---|
 | 2026-07-19 | 冲刺创建：需求、技术设计、7 个 task 文档就绪；等待 T1 开工 |
+| 2026-07-19 | T1 完成（commit `2adb7b1`）：Go module/骨架/Makefile/golangci-lint/CI/go-licenses；Envoy 支持区间定 1.37~1.39；T2 开工 |
 
 ## 决议记录（冲刺内产生的设计决策）
 

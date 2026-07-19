@@ -1,6 +1,6 @@
 # T1 仓库工程基线
 
-- **状态**: 未开始
+- **状态**: 已完成
 - **依赖**: 无
 - **设计依据**: [工程基线](../../../dev_design/260719-1-engineering-baseline.md)（本 task 同时是该文档的落地与校准）
 
@@ -22,10 +22,10 @@
 
 ## 验收
 
-- [ ] `make build && make test && make lint` 本地全绿
-- [ ] CI 在远端跑通（如仓库未接远端，则本地 `act` 或等价验证并记录）
-- [ ] 提交为 1~2 个清晰 commit
+- [x] `make build && make test && make lint` 本地全绿（2026-07-19 验证）
+- [x] CI 在远端跑通（如仓库未接远端，则本地 `act` 或等价验证并记录）——仓库暂无远端，本地等价验证：build/test/lint 全绿，workflow 语法经人工核对；待接远端后观察首跑
+- [x] 提交为 1~2 个清晰 commit（1 个：`2adb7b1`）
 
 ## 进展记录
 
-（接手会话在此追加：日期 / 完成内容 / 问题 / 下一步）
+- 2026-07-19（会话 1）：完成全部 9 步。Go 1.26.5；Envoy 支持区间定 1.37~1.39（写入 `internal/version/envoy.go`，来源 envoyproxy/envoy releases 当日查询，v1.39.0 为最新）；go-licenses 禁 forbidden 类许可证；`cmd/esgw` 暂只有 `version` 子命令（compile 待 T6）。无遗留问题。
