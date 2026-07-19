@@ -29,7 +29,7 @@ T1 ──► T2 ──► T3 ──► T4 ──► T5 ──► T6 ──► T7
 | # | 决策 | 说明 |
 |---|---|---|
 | SD1 | Go ≥ 1.22；module 名 `github.com/linkinghack/envoy-standalone-gateway`（D1 命名未决，代码内二进制/常量统一用 `esgw`，集中在 `internal/version` 便于日后改名） | 基线文档 §2 |
-| SD2 | YAML 解析：`sigs.k8s.io/yaml`（YAML→JSON）+ `encoding/json` `DisallowUnknownFields` 实现 strict decode（协议 P6）；多文档拆分用 `yaml.NewYAMLReader` 或按 `---` 分割后逐文档处理，Origin 记录 `(file, docIndex)` | 不引入第三方 strict 方案，保持依赖最小 |
+| SD2 | YAML 解析（T2 落地后修订）：`gopkg.in/yaml.v3`（YAML 1.2 core schema）自实现 Node→JSON 转换 + `encoding/json` `DisallowUnknownFields` 实现 strict decode（协议 P6）；多文档经 yaml.v3 Decoder 逐文档拆分，Origin 记录 `(file, docIndex)`。**修订原因**：原定的 `sigs.k8s.io/yaml` 底层是 yaml.v2（YAML 1.1），会把裸键 `on:` 解析为布尔 `true`，与协议 §3.3 `retry.on` 冲突（T2 实测复现） | YAML→JSON→strict decode 架构不变，仍不引入第三方 strict 方案 |
 | SD3 | 时长字段统一 `type Duration`（包装 `time.Duration`，JSON/YAML 编解码 Go duration 字符串），协议 §4 约定 | protocol 包内 |
 | SD4 | protobuf 依赖锁定 `github.com/envoyproxy/go-control-plane` 当前稳定版；Envoy 支持区间初定**最近 3 个 minor**（写入 `internal/version/envoy.go` 常量，CI 矩阵同源） | RK4/NFR-6 |
 | SD5 | 编译器主体（F2~F6）**不 import** envoycheck 与任何 IO——`Compile()` 保持纯函数可测（编译层 §6 Options 注入） | 架构 A1 |
