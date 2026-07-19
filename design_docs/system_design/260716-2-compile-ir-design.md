@@ -200,5 +200,5 @@ M0 CLI 即 `esgw compile -f dir/ --mode static -o envoy.yaml` 对该函数的薄
 |---|---|---|
 | C1 | `envoyPatch` 的 `target` 取值全集与 per-rule 定位语法（rules 无 name，用下标还是可选 name 字段） | M0 编码期定，倾向给 rule 加可选 `name` |
 | C2 | EnvoyResources 中 Bootstrap 级字段（如 overload manager）是否允许 patch | M1 前定；v0 先只允许资源级 |
-| C3 | JSON Schema 生成工具选型（invopop/jsonschema vs 手写） | M0 编码期定 |
+| C3 | ~~JSON Schema 生成工具选型（invopop/jsonschema vs 手写）~~ **已决议（2026-07-19，Sprint 260719 T2）**：invopop/jsonschema 由 Go 类型生成 + `JSONSchema()` 类型钩子处理 union/Duration/枚举，单一事实来源；bundle 见 `internal/protocol/schema.go` 的 `Schemas()` | 已定 |
 | C4 | jwt providers 聚合去重的 key 规则（issuer+jwks 相同视为同 provider？） | M0 编码期定 |

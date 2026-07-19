@@ -12,7 +12,7 @@
 | ID | 任务 | 状态 | 依赖 | 验收锚点 |
 |---|---|---|---|---|
 | T1 | 仓库工程基线（module/目录/Makefile/lint/CI） | 已完成 | — | A8 |
-| T2 | internal/protocol：类型、strict decode、loader、defaults、JSON Schema | 未开始 | T1 | A1(输入侧)、C3 |
+| T2 | internal/protocol：类型、strict decode、loader、defaults、JSON Schema | 已完成 | T1 | A1(输入侧)、C3 |
 | T3 | internal/compile F2：链接与语义校验 + CompileError 模型 | 未开始 | T2 | A5 |
 | T4 | internal/compile F3：四类 Builder 与策略映射 | 未开始 | T3 | A1、C4 |
 | T5 | internal/compile F4/F5/F6 + IR/哈希/SourceMap | 未开始 | T4 | A4、A6、C1 |
@@ -27,11 +27,12 @@
 |---|---|
 | 2026-07-19 | 冲刺创建：需求、技术设计、7 个 task 文档就绪；等待 T1 开工 |
 | 2026-07-19 | T1 完成（commit `2adb7b1`）：Go module/骨架/Makefile/golangci-lint/CI/go-licenses；Envoy 支持区间定 1.37~1.39；T2 开工 |
+| 2026-07-19 | T2 完成（commits `6b76692`/`39facc0`/`4f0ba48`/`2b4e4de`）：internal/protocol 全部类型+strict decode loader+defaults+JSON Schema；57 用例全绿；C3 决议落地（见决议记录与 T2 进展记录，含 SD2 YAML 库偏离说明）；T3 开工 |
 
 ## 决议记录（冲刺内产生的设计决策）
 
 | 未决项 | 决议 | 日期 | 已回写文档 |
 |---|---|---|---|
 | C1 | （待定） | | |
-| C3 | （待定） | | |
+| C3 | 采用 invopop/jsonschema 由 Go 类型生成：协议 §6 要求「Schema 由协议 Go 类型生成，单一事实来源」，反射输出对枚举/oneOf/Duration 经 `JSONSchema()` 类型钩子（PolicyAttachment union、Duration pattern、RawJSON 任意、枚举值）与后置注入（每文档 apiVersion/kind 常量、name pattern）后质量达标，bundle = oneOf 六文档 + 共享 $defs；用 santhosh-tekuri/jsonschema/v6 测试加载与正/反校验。手写方案被淘汰：双份真源难维护 | 2026-07-19 | plan_todos_trace（本表）、compile-ir-design §9、T2 进展记录 |
 | C4 | （待定） | | |

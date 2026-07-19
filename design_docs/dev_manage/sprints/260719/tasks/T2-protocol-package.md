@@ -1,6 +1,6 @@
 # T2 internal/protocol：协议类型与加载
 
-- **状态**: 未开始
+- **状态**: 已完成
 - **依赖**: T1
 - **设计依据**: [协议 v0 全文](../../../../system_design/260716-1-gateway-config-protocol-v0.md)（§2 信封、§3 五对象规格、§4 通用约定、§6 版本化、§7 escape hatch 字段形态）、[编译层 §2](../../../../system_design/260716-2-compile-ir-design.md)（ConfigSet）、冲刺技术设计 SD2/SD3、接口冻结点 §3
 
@@ -20,11 +20,17 @@
 
 ## 验收
 
-- [ ] 协议 §8.1/§8.2 YAML 原文解析通过，对象数量与字段值断言正确
-- [ ] 未知字段、坏枚举、坏 name、重名均报错且带 Origin
-- [ ] `Schemas()` 输出可被标准 JSON Schema 校验器加载
-- [ ] C3 决议已记录并回写
+- [x] 协议 §8.1/§8.2 YAML 原文解析通过，对象数量与字段值断言正确
+- [x] 未知字段、坏枚举、坏 name、重名均报错且带 Origin
+- [x] `Schemas()` 输出可被标准 JSON Schema 校验器加载
+- [x] C3 决议已记录并回写
 
 ## 进展记录
 
-（接手会话在此追加）
+- 2026-07-19（会话 1）：T2 完成。
+  - **完成内容**：信封/五对象/EnvoyResources 全部类型（camelCase JSON tag、默认值注释）；`Duration`（SD3）；name 正则与全部枚举；strict decode（encoding/json DisallowUnknownFields）；`LoadDir`（文件名字典序、yaml.v3 多文档拆分、Origin{File, DocIndex 0 起}、同 kind 重名报错带两处 Origin、错误收集不中断）；`defaults.go` 全部默认值常量 + `ApplyDefaults`（未接线，调用归 T3）；`Schemas()` JSON Schema bundle。冻结接口 `ConfigSet/LoadDir/Schemas/LoadError` 与 technical_design §3 一致。测试 57 个用例全绿；`make build && make test && make lint` 全绿（lint 0 issues）。commits：`6b76692`（类型）、`39facc0`（loader+testdata）、`4f0ba48`（defaults）、`2b4e4de`（schema）。
+  - **结构层校验范围**（单文档内，非跨对象）：枚举值、name 正则、证书 oneOf（ref xor certFile+keyFile）、path/header 匹配三选一、rule 动作三选一、Upstream 端点来源三选一、Policy 类型键唯一、extAuth/jwks 形态、CIDR、端口范围、Gateway name 必须为 default。Route 的 rules/forward 互斥按任务要求留给 T3。
+  - **与设计文档的偏离（已记录，未静默）**：SD2 原拟 `sigs.k8s.io/yaml` 做 YAML→JSON，但其底层 yaml.v2 是 YAML 1.1——`on:` 键会被解析为布尔 `true`，协议 §3.3 的 `retry.on` 必然踩坑。改用 `gopkg.in/yaml.v3`（YAML 1.2 core schema，`on` 保持字符串）自实现 Node→JSON 转换，「YAML→JSON→DisallowUnknownFields」的 SD2 架构不变。建议后续修订 SD2 条文。
+  - **C3 决议**：采用 invopop/jsonschema 由 Go 类型生成（协议 §6 要求「Schema 由协议 Go 类型生成，单一事实来源」）。对 union/特殊类型用 `JSONSchema()` 钩子补足：`PolicyAttachment`（oneOf 字符串|PolicySpec）、`Duration`（string+pattern）、`RawJSON`（任意）、全部枚举（enum 值）；后置注入每文档 apiVersion/kind 常量与 metadata.name pattern。bundle = 顶层 oneOf 六文档 + 共享 $defs，additionalProperties:false 与 strict decode 对齐。测试用 santhosh-tekuri/jsonschema/v6 加载 bundle 并校验 S1/S2 全部文档通过、5 类坏文档被拒。已回写 plan_todos_trace 与编译层文档 §9。
+  - **歧义记录（不阻塞，留后续版本）**：① `basicAuth.users` 形态（htpasswd 文件路径或内联内容）按 string 实现，编译期再区分语义；② Listener `tls` 在 protocol=HTTPS/TLS 时的必填校验属条件性语义校验，留 T3；③ jwt 未声明 optional 时 issuer/jwks 是否必填规格未明说，加载期未强制。
+  - **下一步**：T3（F2 链接与语义校验）消费 ConfigSet/ApplyDefaults。
