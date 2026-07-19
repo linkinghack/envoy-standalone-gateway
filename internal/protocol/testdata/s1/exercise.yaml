@@ -1,0 +1,56 @@
+apiVersion: esgw/v1alpha1
+kind: Listener
+metadata: {name: https}
+spec:
+  port: 443
+  protocol: HTTPS
+  tls:
+    certificates:
+      - {certFile: /etc/esgw/certs/www.crt,  keyFile: /etc/esgw/certs/www.key}
+      - {certFile: /etc/esgw/certs/blog.crt, keyFile: /etc/esgw/certs/blog.key}
+---
+kind: Listener
+apiVersion: esgw/v1alpha1
+metadata: {name: http}
+spec: {port: 80, protocol: HTTP}
+---
+apiVersion: esgw/v1alpha1
+kind: Route
+metadata: {name: www}
+spec:
+  listeners: [https]
+  hostnames: [www.example.com]
+  rules:
+    - match: {path: {prefix: /}}
+      backends: [{upstream: www-app}]
+---
+apiVersion: esgw/v1alpha1
+kind: Route
+metadata: {name: blog}
+spec:
+  listeners: [https]
+  hostnames: [blog.example.com]
+  rules:
+    - match: {path: {prefix: /}}
+      backends: [{upstream: blog-app}]
+---
+apiVersion: esgw/v1alpha1
+kind: Route
+metadata: {name: http-redirect}
+spec:
+  listeners: [http]
+  rules:
+    - match: {path: {prefix: /}}
+      redirect: {scheme: https, code: 301}
+---
+apiVersion: esgw/v1alpha1
+kind: Upstream
+metadata: {name: www-app}
+spec:
+  endpoints: [{address: 127.0.0.1, port: 3000}]
+---
+apiVersion: esgw/v1alpha1
+kind: Upstream
+metadata: {name: blog-app}
+spec:
+  endpoints: [{address: 127.0.0.1, port: 4000}]

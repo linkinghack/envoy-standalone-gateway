@@ -1,0 +1,60 @@
+apiVersion: esgw/v1alpha1
+kind: Route
+metadata: {name: api}
+spec:
+  listeners: [https]
+  hostnames: [api.example.com]
+  policies: [jwt-main, cors-web]        # Route 级：默认全部规则生效
+  rules:
+    - match: {path: {exact: /auth/login}, methods: [POST]}
+      backends: [{upstream: auth-svc}]
+      policies:
+        - jwt-off                        # 就近覆盖：登录免 JWT
+        - rateLimit: {requests: 10, unit: minute, key: clientIP}   # 内联限流
+    - match: {path: {prefix: /users/}}
+      rewrite: {pathPrefix: /}
+      backends:
+        - {upstream: user-svc, weight: 90}
+        - {upstream: user-svc-canary, weight: 10}
+      timeout: 10s
+      retry: {attempts: 2, perTryTimeout: 2s, on: [5xx, connect-failure]}
+    - match: {path: {prefix: /orders/}}
+      rewrite: {pathPrefix: /}
+      backends: [{upstream: order-svc}]
+      timeout: 30s
+---
+apiVersion: esgw/v1alpha1
+kind: Policy
+metadata: {name: jwt-main}
+spec:
+  jwt:
+    issuer: https://auth.example.com
+    audiences: [api.example.com]
+    jwks: {uri: https://auth.example.com/.well-known/jwks.json}
+    forwardPayloadHeader: x-jwt-payload
+---
+apiVersion: esgw/v1alpha1
+kind: Policy
+metadata: {name: jwt-off}
+spec:
+  jwt: {optional: true}                  # 同类型就近覆盖 → 该 rule 实际关闭强制校验
+---
+apiVersion: esgw/v1alpha1
+kind: Policy
+metadata: {name: cors-web}
+spec:
+  cors:
+    allowOrigins: ["https://*.example.com"]
+    allowMethods: [GET, POST, PUT, DELETE]
+    allowHeaders: [authorization, content-type]
+    maxAge: 24h
+---
+apiVersion: esgw/v1alpha1
+kind: Upstream
+metadata: {name: order-svc}
+spec:
+  dns: {hostname: order.internal, port: 9090}
+  connection: {http2: true}              # gRPC 后端
+  healthCheck: {http: {path: /healthz}, interval: 10s, timeout: 2s,
+                healthyThreshold: 2, unhealthyThreshold: 3}
+# user-svc / user-svc-canary / auth-svc 同构，略
