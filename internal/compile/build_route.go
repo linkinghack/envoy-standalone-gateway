@@ -197,19 +197,17 @@ func (ctx *buildContext) buildRouteAction(rule *protocol.Rule) *routev3.RouteAct
 		}
 	} else {
 		wc := &routev3.WeightedCluster{}
-		var total int32
 		for _, b := range rule.Backends {
 			w := int32(1)
 			if b.Weight != nil {
 				w = *b.Weight
 			}
-			total += w
 			wc.Clusters = append(wc.Clusters, &routev3.WeightedCluster_ClusterWeight{
 				Name:   clusterResourceName(b.Upstream),
 				Weight: wrapperspb.UInt32(uint32(w)),
 			})
 		}
-		wc.TotalWeight = wrapperspb.UInt32(uint32(total))
+		// total_weight 已废弃：Envoy 按各 cluster 权重自动求和。
 		action.ClusterSpecifier = &routev3.RouteAction_WeightedClusters{WeightedClusters: wc}
 	}
 

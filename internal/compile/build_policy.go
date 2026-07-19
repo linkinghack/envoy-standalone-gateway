@@ -191,11 +191,11 @@ func headerAdds(ops *protocol.HeaderOps) []*corev3.HeaderValueOption {
 	return out
 }
 
-// buildCorsPolicy 生成 per-route CorsPolicy。
-// allowOrigins 支持通配（协议 §3.5）：含 "*" 的条目转 safe_regex；单独的 "*" = 放行全部源
-// （Envoy 语义：allow_origin_string_match 为空即放行全部）。
-func buildCorsPolicy(p *protocol.CORSPolicy) *routev3.CorsPolicy {
-	c := &routev3.CorsPolicy{
+// buildCorsPolicy 生成 per-route CorsPolicy（cors filter 的 per-route 配置消息，
+// 编译层 §3 策略表）。allowOrigins 支持通配（协议 §3.5）：含 "*" 的条目转
+// safe_regex；单独的 "*" = 放行全部源（Envoy 语义：allow_origin_string_match 为空即放行全部）。
+func buildCorsPolicy(p *protocol.CORSPolicy) *corsv3.CorsPolicy {
+	c := &corsv3.CorsPolicy{
 		AllowMethods: strings.Join(p.AllowMethods, ","),
 		AllowHeaders: strings.Join(p.AllowHeaders, ","),
 	}
@@ -373,6 +373,7 @@ func (ctx *buildContext) buildJWTProvider(j *protocol.JWTPolicy) (*jwtv3.JwtProv
 				HttpUri: &corev3.HttpUri{
 					Uri:              j.JWKS.URI,
 					HttpUpstreamType: &corev3.HttpUri_Cluster{Cluster: cluster},
+					Timeout:          durationpb.New(protocol.DefaultConnectTimeout), // PGV 必填
 				},
 			},
 		}
