@@ -38,7 +38,19 @@ A lightweight management plane (single binary + web UI) that drives one or more 
 
 ## Status
 
-🚧 **Early design stage.** See [`design_docs/`](design_docs/) for requirements analysis and system design documents.
+[![ci](https://github.com/linkinghack/envoy-standalone-gateway/actions/workflows/ci.yaml/badge.svg)](https://github.com/linkinghack/envoy-standalone-gateway/actions/workflows/ci.yaml)
+
+🚧 **M0 in progress** (protocol & compiler, [Sprint 260719](design_docs/dev_manage/sprints/260719/plan_todos_trace.md)). See [`design_docs/`](design_docs/) for requirements analysis and system design documents.
+
+## Development
+
+Entry point for contributors (human or AI): [`design_docs/dev_manage/sprints/README.md`](design_docs/dev_manage/sprints/README.md) → current sprint's `plan_todos_trace.md`. Engineering baseline: [`design_docs/dev_manage/dev_design/260719-1-engineering-baseline.md`](design_docs/dev_manage/dev_design/260719-1-engineering-baseline.md).
+
+```sh
+make build   # build bin/esgw
+make test    # unit tests
+make lint    # golangci-lint
+```
 
 ## Deployment targets
 

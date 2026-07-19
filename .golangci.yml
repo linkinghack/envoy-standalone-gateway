@@ -1,0 +1,22 @@
+version: "2"
+
+linters:
+  enable:
+    - govet
+    - staticcheck
+    - errcheck
+    - revive
+  settings:
+    revive:
+      rules:
+        - name: exported
+          arguments:
+            - "disableStutteringCheck"
+
+formatters:
+  enable:
+    - gofumpt
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

@@ -1,0 +1,45 @@
+name: ci
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  build-test-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: true
+      - name: build
+        run: make build
+      - name: test
+        run: make test
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: latest
+
+  licenses:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+      - name: go-licenses check
+        run: |
+          go install github.com/google/go-licenses@latest
+          # 项目本体 AGPL-3.0：禁止 forbidden 类（专有/不兼容）许可证依赖
+          go-licenses check --disallowed_types=forbidden ./...
+
+  # Sprint 260719 T7 启用：按 internal/version.EnvoyMatrixVersions 拉官方镜像
+  # 对 golden static 产物跑 envoy --mode validate；e2e 独立 job 同期加入。
+  validate-matrix:
+    runs-on: ubuntu-latest
+    if: false # T7 placeholder
+    steps:
+      - run: echo "enabled in Sprint 260719 T7"
