@@ -13,7 +13,7 @@
 |---|---|---|---|---|
 | T1 | 仓库工程基线（module/目录/Makefile/lint/CI） | 已完成 | — | A8 |
 | T2 | internal/protocol：类型、strict decode、loader、defaults、JSON Schema | 已完成 | T1 | A1(输入侧)、C3 |
-| T3 | internal/compile F2：链接与语义校验 + CompileError 模型 | 未开始 | T2 | A5 |
+| T3 | internal/compile F2：链接与语义校验 + CompileError 模型 | 已完成 | T2 | A5 |
 | T4 | internal/compile F3：四类 Builder 与策略映射 | 未开始 | T3 | A1、C4 |
 | T5 | internal/compile F4/F5/F6 + IR/哈希/SourceMap | 未开始 | T4 | A4、A6、C1 |
 | T6 | static 渲染 + F7 envoycheck + `esgw compile` CLI | 未开始 | T5 | A2、A7 |
@@ -28,6 +28,7 @@
 | 2026-07-19 | 冲刺创建：需求、技术设计、7 个 task 文档就绪；等待 T1 开工 |
 | 2026-07-19 | T1 完成（commit `2adb7b1`）：Go module/骨架/Makefile/golangci-lint/CI/go-licenses；Envoy 支持区间定 1.37~1.39；T2 开工 |
 | 2026-07-19 | T2 完成（commits `6b76692`/`39facc0`/`4f0ba48`/`2b4e4de`）：internal/protocol 全部类型+strict decode loader+defaults+JSON Schema；57 用例全绿；C3 决议落地（见决议记录与 T2 进展记录，含 SD2 YAML 库偏离说明）；T3 开工 |
+| 2026-07-19 | T3 完成（commits `86333d5`/`2b3714a`/`feda68a`）：CompileError/SourceRef 错误模型、F2 链接与语义校验全规则、Compile() 骨架（F3+ 占位）、EndpointSource 接口定义；33 用例全绿，S1/S2 过 F2 零错误；ipAccess 层级等 6 条设计澄清见 T3 进展记录；T4 开工 |
 
 ## 决议记录（冲刺内产生的设计决策）
 
