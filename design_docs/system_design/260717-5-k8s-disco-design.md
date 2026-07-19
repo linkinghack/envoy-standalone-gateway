@@ -177,6 +177,8 @@ type ServiceCandidate struct {
 
 依据：「Service 不存在 / 端口失配」是配置错误，必须在发布前拦截（NFR-3"非法配置不出管理面"）；「零就绪端点」是合法运行态（服务缩容到 0），拦截它会误伤正常发布。错误经编译层 `CompileError`（Stage=link）回指 YAML 位置（编译层 §4），供 UI 行内标注。
 
+**启动恢复特例**：上表的 fail-fast 只适用于**发布期**编译（拦截新错误进入系统）。esgw 重启后对 effective 版本的恢复性重编译（[260717-1](260717-1-deliver-layer-design.md) §2.2 启动链路）目标是尽快恢复数据面配置，且该配置已通过发布期校验——此时若 M-DISCO 尚未 `active`（缓存未就绪 / 暂时 degraded），`Resolve` 不报错而是**降级返回空端点 + Warning**：编译照常完成、对应 CLA 为空，watch 就绪后经 EDS 快速通道自动补齐（秒级）。若无此特例，「esgw 与 k8s API server 同时重启」会让管理面卡死在恢复失败上，Envoy 拿不到任何配置——比短暂空端点严重得多。static 模式启动直接使用已落盘的 envoy.yaml、不触发重编译（260717-1 §5.2），不受影响。恢复期是否额外有界等待 `WaitForCacheSync` 以缩小空端点窗口，列 KD6。
+
 ## 5. 与编译层 / 下发层集成
 
 ### 5.1 编译期：实现 `EndpointSource`
@@ -204,7 +206,7 @@ type EndpointSource interface {
   → M-DISCO.SyncTrackedServices(refs)   // refs 由发布流从 ConfigSet 提取；diff 出新增/移除的跟踪集合
   → informer 事件（Service / EndpointSlice 变化）
   → 防抖窗口合并（§5.4），从缓存全量重算受影响 CLA
-  → M-DELIVER.ApplyEndpointUpdates(map[clusterName]*CLA)   // 一次调用批量携带，单次 snapshot 版本递增
+  → M-DELIVER.UpdateEndpoints(map[clusterName]*CLA)   // 一次调用批量携带，单次 snapshot 版本递增（接口签名见 260717-1 §3.1）
   → 仅触发 EDS 推送；LDS/RDS/CDS/SDS 不动
 ```
 
@@ -238,7 +240,7 @@ endpoints:                        # 单个 LocalityLbEndpoints：v0 不引入 lo
 | 合并窗口 | 事件只标记 dirty cluster，`edsDebounce`（默认 200ms）后统一处理；滚动更新时多片陆续变化的尖峰合并为一次推送 |
 | 重算基准 | **从 informer 缓存全量重算** dirty cluster 的 CLA，不增量应用事件——防 watch 事件丢失/乱序导致的漂移；缓存即真源，与 informer resync 对账模型一致 |
 | 无变化跳过 | 重算 CLA 与当前内容哈希一致则不调下发层，与"配置未变不触发下发"的确定性原则（编译层 §5）对齐 |
-| 批量调用 | 同窗口内多个 dirty cluster 合并为一次 `ApplyEndpointUpdates` 调用，减少 snapshot 版本抖动 |
+| 批量调用 | 同窗口内多个 dirty cluster 合并为一次 `UpdateEndpoints` 调用，减少 snapshot 版本抖动 |
 
 ### 5.5 Service 删除的兜底行为
 
@@ -287,3 +289,4 @@ Pod (Deployment，可多副本)
 | KD3 | 是否支持外部 kubeconfig（管理面在集群外、发现集群内 Service）；v0 仅 in-cluster | 出现真实需求时 |
 | KD4 | 大集群规模（万级 EndpointSlice）下 informer 内存与初次 list 耗时压测；必要时引入 label selector 缩小 watch 面 | M2 压测 |
 | KD5 | Headless Service 在控制台的展示与"快照为静态地址"语义确认（端点映射逻辑已天然支持，仅 UI/交互细节） | M2 控制台联调 |
+| KD6 | 启动恢复特例（§4.2）中是否在恢复链路有界等待 `WaitForCacheSync`（如 ≤10s）以缩小空端点窗口，及空端点期间的控制台提示形态 | M2 k8s sprint 联调 |

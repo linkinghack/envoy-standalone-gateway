@@ -103,7 +103,7 @@ ConfigSet
 | extAuth | `envoy.filters.http.ext_authz` | per-route disable/override |
 | ipAccess | `envoy.filters.http.rbac` | per_filter_config |
 
-HCM filter chain 固定顺序（协议 §3.5 规则 4）：`rbac → jwt_authn → ext_authz → local_ratelimit → cors → router`。所有策略 filter 常驻链上、默认 pass-through，实际生效范围由 per-route 配置控制——避免"某 rule 加策略导致 filter chain 结构抖动"的大 diff。
+HCM filter chain 固定顺序（协议 §3.5 规则 4）：`rbac → cors → jwt_authn → ext_authz → local_ratelimit → router`（cors 先于鉴权类 filter：preflight 请求不带凭证，必须在鉴权前被应答，见协议 §3.5 规则 4）。所有策略 filter 常驻链上、默认 pass-through，实际生效范围由 per-route 配置控制——避免"某 rule 加策略导致 filter chain 结构抖动"的大 diff。
 
 ### F4 合成（escape hatch）
 
@@ -145,6 +145,7 @@ type CompileError struct {
 | 规约 | 内容 |
 |---|---|
 | 资源命名 | `lis/<listener>`、`rc/<listener>`、`vh/<route>`、`us/<upstream>`、`crt/<listener>/<n>`；`/` 分隔避免与用户 name 字符集冲突，前缀短因其出现在 stats 名中（M-STATE 反解归属靠它） |
+| stats 前缀 | HCM `stat_prefix` = `lis/<listener>`（listener 维度 HTTP stats 以 `http.lis/<n>.*` 归组）；cluster 维度天然以资源名 `us/<upstream>` 归组——这是 M-STATE 统计归组的静态契约（[260717-4](260717-4-state-collection-design.md) §5.1 消费） |
 | 排序 | map 输出按 name 排序；rules 保持用户顺序；vhost domains 按精确>通配>兜底再字典序 |
 | 版本号 | `IR.Version` = 全资源确定性序列化的 SHA-256 前 12 位；同时作为 Snapshot version 与 static 文件头注释 |
 | 禁止项 | Builder 内禁止读取时间、随机数、环境；所有环境输入（如 envoy 版本目标）显式入参 |

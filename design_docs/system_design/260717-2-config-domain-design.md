@@ -222,7 +222,7 @@ v41 → v42 → v43(当前)
 
 - **草稿无状态机**：草稿只有"内容 + 派生校验结果"，状态机只属于发布运行。一个配置集同一时刻至多一个非终态 publish_run。
 - `CONFIRM_TIMEOUT` 不是失败：配置可能正常只是确认链路异常（如 admin API 暂不可达）。该状态允许人工重查（re-check 迁移到 CONFIRMING）或忽略；不阻塞下一次发布。
-- 终态：`VALIDATE_FAILED`、`PUBLISH_FAILED`、`CONFIRM_TIMEOUT`、`EFFECTIVE`。
+- 终态：`VALIDATE_FAILED`、`PUBLISH_FAILED`、`CONFIRM_TIMEOUT`、`EFFECTIVE`。其中 `CONFIRM_TIMEOUT` 为**可重入终态**（re-check 可迁回 CONFIRMING），其余终态不可迁出；`one_active_publish` 约束（§5.3/§7.1）只计非终态，CONFIRM_TIMEOUT 不阻塞下一次发布。
 
 ### 5.2 每步调谁
 
@@ -240,7 +240,7 @@ v41 → v42 → v43(当前)
 | 机制 | 实现 |
 |---|---|
 | 单配置集单发布 | 进程内互斥锁 + DB 约束兜底：`publish_runs` 上对非终态状态建唯一部分索引（`WHERE state IN ('VALIDATING','VALIDATED','PUBLISHING','CONFIRMING')`），并发提交第二条直接失败 |
-| 乐观并发（编辑 vs 发布） | 发布/保存请求携带 `baseHash` = 调用方最近读到的 `draftHash`；与当前真源不符返回 409 + 最新哈希。UI 表单与 YAML 编辑器共用此契约（API 细节见 [`260717-3-console-api-design.md`](260717-3-console-api-design.md)） |
+| 乐观并发（编辑 vs 发布） | 发布/保存请求携带 `baseHash` = 调用方最近读到的 `draftHash`；与当前真源不符返回 409 + 最新哈希。UI 表单与 YAML 编辑器共用此契约；API 层将 `draftHash` 以不透明 `resourceVersion` 令牌形态暴露，两者是同一值（API 细节见 [`260717-3-console-api-design.md`](260717-3-console-api-design.md)） |
 | VALIDATED 滞留 | VALIDATED 状态带 TTL（默认 10 分钟）：超时未 publish 自动失效，防止"审着旧 diff 发布新世界"——publish 时复检 `draftHash` 与校验时一致，不一致强制重新 validate |
 
 ### 5.4 失败留痕与可查性
@@ -303,8 +303,12 @@ CREATE TABLE publish_runs (
   created_at   TEXT NOT NULL,
   updated_at   TEXT NOT NULL
 );
--- 单配置集单发布：非终态唯一（§5.3）
-CREATE UNIQUE INDEX one_active_publish ON publish_runs(state)
+-- 单配置集单发布：任意时刻至多一条非终态 run（§5.3）。
+-- 注意：不能直接对 state 列建部分唯一索引——那只约束"每种非终态各至多一条"
+-- （VALIDATING 与 PUBLISHING 可并存）；对布尔表达式建索引使全部非终态行落在
+-- 同一索引键上互相冲突，才是"至多一条活跃发布"的正确表达。
+CREATE UNIQUE INDEX one_active_publish
+  ON publish_runs((state IN ('VALIDATING','VALIDATED','PUBLISHING','CONFIRMING')))
   WHERE state IN ('VALIDATING','VALIDATED','PUBLISHING','CONFIRMING');
 
 -- 本地账号与会话（FR-4.6 首期；API 形态属控制台文档）

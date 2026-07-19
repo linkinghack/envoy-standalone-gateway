@@ -59,7 +59,7 @@
 | 管理面语言 | **Go** | go-control-plane（xDS）、client-go（k8s）、Envoy protobuf Go 绑定齐备；单二进制交叉编译满足 NFR-7 | 定 |
 | xDS 实现 | **go-control-plane**（ADS + SotW SnapshotCache 起步） | 官方维护、生产验证充分；Delta xDS 后续按需演进 | 定 |
 | IR 表示 | go-control-plane 的 Envoy v3 protobuf 资源集合（`envoy.config.*.v3`） | 不自造中间模型，编译产物即下发载荷，校验可复用 PGV | 定 |
-| 配置持久化 | 声明式文件（YAML）为真源 + **SQLite**（纯 Go 驱动 modernc.org/sqlite）存版本/会话/审计等运行态 | A5 原则；SQLite 对结构化查询（版本 diff、审计）比 bbolt 友好 | 倾向，M1 前可复议 |
+| 配置持久化 | 声明式文件（YAML）为真源 + **SQLite**（纯 Go 驱动 modernc.org/sqlite）存版本/会话/审计等运行态 | A5 原则；SQLite 对结构化查询（版本 diff、审计）比 bbolt 友好 | 定（D2 已终审，[`260717-2-config-domain-design.md`](260717-2-config-domain-design.md) §7） |
 | Web 前端 | **React + TypeScript + Vite**，组件库倾向 Ant Design；YAML 编辑器用 Monaco/CodeMirror | 表单密集型控制台的成熟生态；候选备选 Vue 由前端启动 sprint 终审 | 倾向 |
 | API 风格 | REST + JSON（OpenAPI 描述），控制台与 CLI 共用同一 API | 简单通用；xDS 才需要 gRPC，管理 API 不需要 | 定 |
 | 控制台鉴权 | 本地账号 + Cookie Session（首期），预留 OIDC 接口 | FR-4.6 | 定 |
@@ -150,7 +150,7 @@ M1 交付 T1、T2；T3 随 FR-5.3（P1）交付。
 | # | 事项 | 计划决策时机 |
 |---|---|---|
 | D1 | 项目/二进制正式命名（暂用 esgw） | M0 期间 |
-| D2 | SQLite vs bbolt 终审 | M1 启动前 |
+| D2 | SQLite vs bbolt 终审 | **已终审：SQLite**（[`260717-2-config-domain-design.md`](260717-2-config-domain-design.md) §7） |
 | D3 | 前端框架终审（React 倾向 vs Vue） | 控制台 sprint 启动时 |
 | D4 | xDS SotW vs Delta 演进时机 | M2 后按规模需求 |
 | D5 | 证书私钥加密方案（本地密钥加密 vs 对接外部 secret） | M1 期间 |

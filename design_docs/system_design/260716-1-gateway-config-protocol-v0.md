@@ -259,7 +259,7 @@ v0/v1 策略类型清单（与 FR-1.3 对齐）：
 | `cors` | CORS | `allowOrigins`（支持通配）、`allowMethods`、`allowHeaders`、`allowCredentials`、`maxAge` | P1 |
 | `rateLimit` | 本地限流（单实例令牌桶） | 见上例；分布式限流为后续版本 | P1 |
 | `jwt` | JWT 校验 | `issuer`、`audiences`、`jwks.{uri,file}`、`forwardPayloadHeader`、`optional` | P1 |
-| `extAuth` | 外部鉴权 | `grpc.address` 或 `http.{address,pathPrefix}`、`failOpen` | P1 |
+| `extAuth` | 外部鉴权 | `grpc.address` 或 `http.{address,pathPrefix}`、`failOpen`、`disabled`（局部关闭，见规则 3a） | P1 |
 | `ipAccess` | IP 黑白名单 | `allow[]` / `deny[]`（CIDR） | P1 |
 | `basicAuth` | Basic 认证 | `users`（htpasswd 文件或内联哈希） | P2 |
 
@@ -277,7 +277,9 @@ policies:
 ```
 
 3. **同类型冲突：就近覆盖（closest wins），整体替换不做深合并**。rule 级 > Route 级 > Listener 级 > Gateway 级。v0 用最简单可预测的语义，深合并留给后续版本按真实反馈决定。
-4. 不同类型策略执行顺序由编译器固定（ipAccess → jwt/extAuth/basicAuth → rateLimit → cors → headerModifier），用户不可排序——可预测性优先。
+
+   3a. **局部关闭**：不引入通用 `disable` 机制，各策略类型自带显式"关"字段，配合就近覆盖即可为个别路径豁免——`jwt: {optional: true}`、`extAuth: {disabled: true}`（映射 Envoy `ExtAuthzPerRoute.disabled`）。典型用法：Route 级挂全站鉴权，免鉴权的 rule 以内联匿名对象就近覆盖（见 §8.2 登录免 JWT 的同构写法）。
+4. 不同类型策略执行顺序由编译器固定（ipAccess → cors → jwt/extAuth/basicAuth → rateLimit → headerModifier），用户不可排序——可预测性优先。cors 必须先于鉴权类策略：浏览器 CORS preflight（OPTIONS）不携带凭证，若先过 jwt/extAuth 会被 401 拦截，导致"启用 JWT 的接口 CORS 必坏"的经典故障（Envoy Gateway 等实现同此顺序）。
 
 ## 4. 通用字段约定
 
