@@ -30,6 +30,7 @@ type Forward struct {
 
 // Rule 是一条匹配与动作规则。动作三选一：backends / redirect / directResponse。
 type Rule struct {
+	Name           string             `json:"name,omitempty"` // 可选；rule 级 envoyPatch（target: route/<name>）的定位锚（C1），Route 内唯一
 	Match          RuleMatch          `json:"match"`
 	Rewrite        *Rewrite           `json:"rewrite,omitempty"`
 	Backends       []BackendRef       `json:"backends,omitempty"`
@@ -112,9 +113,20 @@ func (s *RouteSpec) validate() error {
 	if err := validatePolicyAttachments("spec.policies", s.Policies); err != nil {
 		return err
 	}
+	ruleNames := map[string]int{}
 	for i := range s.Rules {
 		if err := s.Rules[i].validate(fmt.Sprintf("spec.rules[%d]", i)); err != nil {
 			return err
+		}
+		// rule name 是 rule 级 envoyPatch 的定位锚（C1）：须合法且 Route 内唯一。
+		if n := s.Rules[i].Name; n != "" {
+			if err := ValidateName(n); err != nil {
+				return fmt.Errorf("spec.rules[%d].name: %v", i, err)
+			}
+			if prev, ok := ruleNames[n]; ok {
+				return fmt.Errorf("spec.rules[%d].name: duplicate rule name %q (first at spec.rules[%d])", i, n, prev)
+			}
+			ruleNames[n] = i
 		}
 	}
 	return validateEnvoyPatches("spec.envoyPatch", s.EnvoyPatch)

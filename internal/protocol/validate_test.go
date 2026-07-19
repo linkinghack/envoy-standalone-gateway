@@ -92,7 +92,8 @@ spec:
   listeners: [http]
   hostnames: ["*.example.com"]
   rules:
-    - match:
+    - name: legacy-regex
+      match:
         path: {regex: "^/v[0-9]/"}
         methods: [GET]
         headers: [{name: x-tenant, exact: acme}]
@@ -186,6 +187,25 @@ spec:
       rewrite: {pathPrefix: /, path: /fixed}
       backends: [{upstream: u}]
 `, `mutually exclusive`},
+		{"duplicate rule name", `
+apiVersion: esgw/v1alpha1
+kind: Route
+metadata: {name: r}
+spec:
+  listeners: [http]
+  rules:
+    - {name: login, match: {path: {prefix: /a}}, backends: [{upstream: u}]}
+    - {name: login, match: {path: {prefix: /b}}, backends: [{upstream: u}]}
+`, `duplicate rule name "login"`},
+		{"invalid rule name", `
+apiVersion: esgw/v1alpha1
+kind: Route
+metadata: {name: r}
+spec:
+  listeners: [http]
+  rules:
+    - {name: "Login_Bad", match: {path: {prefix: /a}}, backends: [{upstream: u}]}
+`, `invalid name`},
 	}
 	for _, tc := range bad {
 		t.Run(tc.name, func(t *testing.T) { expectLoadErr(t, tc.doc, tc.substr) })

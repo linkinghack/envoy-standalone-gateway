@@ -127,7 +127,8 @@ spec:
   hostnames: ["api.example.com"]  # 域名匹配，支持 "*.example.com" 前缀通配；省略 = 兜底 "*"
   policies: []                  # Route 级策略，作用于全部 rules
   rules:                        # 顺序即优先级：自上而下首个 match 命中生效（P4）
-    - match:
+    - name: users               # 可选；rule 级 envoyPatch（§7.1，target: route/<name>）的定位锚，Route 内唯一
+      match:
         path:
           prefix: /v1/          # exact | prefix | regex 三选一
         methods: [GET, POST]    # 可选
@@ -163,6 +164,7 @@ spec:
 1. **匹配语义**：`hostnames` 先选中 Route（同 Listener 下多个 Route 的 hostname 重叠时，精确域名优先于通配，通配优先于兜底；同精度冲突是编译错误），rules 再顺序匹配。这条两级规则是协议里唯一的隐式优先级，需在文档中用一句话讲清："**先挑域名，再从上往下**"。
 2. 一条 rule 的动作三选一：`backends` / `redirect` / `directResponse`。
 3. `retry.on` 枚举 v0 支持：`5xx`、`gateway-error`、`connect-failure`、`reset`、`retriable-4xx`；默认不重试（显式声明才开启，避免非幂等请求意外重试）。
+4. rule 可带可选 `name`（Route 内唯一，字符集同 `metadata.name`）：它是 rule 级 `envoyPatch`（§7.1，`target: route/<name>`）的定位锚；无 `name` 的 rule 不可被 rule 级 patch 定位（编译层未决事项 C1 决议，2026-07-19）。`name` 不影响匹配语义与顺序。
 
 #### 3.3.5 L4 形态（P1，protocol: TCP/TLS 的 Listener）
 
@@ -342,7 +344,7 @@ spec:
         - {op: replace, path: /dns_lookup_family, value: V4_ONLY}
 ```
 
-- `target` 的合法取值由对象 kind 决定（如 Route 的 rule 支持 `target: route` 打 per-route patch）；patch 施加于编译完成之后、校验之前（顺序细节见编译层文档）。
+- `target` 的合法取值由对象 kind 决定（C1 决议定表，2026-07-19）：Listener→`listener`/`secret`；Route→`virtualHost`/`route`（rule 级须写作 `route/<ruleName>`，定位带 `name` 的 rule，见 §3.3 要点 4）；Upstream→`cluster`/`endpoints`；Gateway→`bootstrap` 不允许（C2 留 M1）。patch 施加于编译完成之后、校验之前（顺序细节见编译层文档）。
 - patch 后的资源仍要过全部校验（PGV + envoy validate），写坏 = 发布被拦截，而非运行时炸。
 
 ### 7.2 顶层原生资源 `EnvoyResources`
