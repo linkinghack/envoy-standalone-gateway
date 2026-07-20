@@ -26,6 +26,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 0
 	case "compile":
 		return runCompile(args[1:], stdout, stderr)
+	case "serve":
+		return runServe(args[1:], stderr)
 	default:
 		eprintf(stderr, "unknown command %q\n", args[0])
 		usage(stderr)
@@ -38,6 +40,7 @@ func usage(stderr io.Writer) {
 
 Commands:
   compile   compile a config directory into an Envoy config artifact
+  serve     run the control plane (xDS ADS server): -c <esgw.yaml> -f <config-dir>
   version   print version
 `, version.BinaryName)
 }
