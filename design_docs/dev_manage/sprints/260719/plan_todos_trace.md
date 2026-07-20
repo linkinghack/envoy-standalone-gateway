@@ -53,9 +53,9 @@
 | A5 | F2 每条语义规则至少一个反例，错误均带 SourceRef | ✅ 达成 | T3 表驱动（`internal/compile/link_test.go`）+ 6 个错误 golden（`testdata/errors/*/want-errors.json` 每条含 file/kind/name/path） |
 | A6 | 同一输入两次编译字节级一致；IR.Version 稳定 | ✅ 达成（T7 修复一个红线缺陷后） | `internal/compile/determinism_test.go` + golden 连续 3 轮无 diff；T7 修复 anypb.New 内层非确定性序列化导致的 IR.Version 抖动（commit `fe005b2`，修复后 s2 digest 15 轮进程级一致） |
 | A7 | `esgw compile --mode static/xds` 可用 | ✅ 达成 | `cmd/esgw/compile_test.go` 集成测试 + 手工验证：`bin/esgw compile -f testdata/s1/input`（static/xds）产物与 golden 字节级一致 |
-| A8 | CI 全绿；make test/lint/e2e 本地可复现 | ✅ 达成（本地全绿；远端 CI 绿待推送后确认） | 本地 `make build/test/lint` 全绿（golangci-lint 0 issues）、`make e2e`、`make validate-matrix` 通过；CI 四个 job（build-test-lint/licenses/validate-matrix/e2e）已配置 |
+| A8 | CI 全绿；make test/lint/e2e 本地可复现 | ✅ 达成（本地全绿；远端 CI 四 job 已确认全绿） | 本地 `make build/test/lint` 全绿（golangci-lint 0 issues）、`make e2e`、`make validate-matrix` 通过；推送后修复 licenses job（go-licenses 误判项目本体 AGPL-3.0 为 forbidden 依赖，`--ignore` 排除本体，commit `880ab4f`），GitHub Actions run 29714180533 四个 job（build-test-lint/licenses/validate-matrix/e2e）全部 success |
 
-未达项：无。唯一保留说明：A8 的「CI 全绿」以本地等效命令全绿为证据，GitHub Actions 实际运行结果需推送后确认（本冲刺工作流约定不 push）。
+未达项：无。
 
 ## 冲刺关闭（2026-07-20）
 
