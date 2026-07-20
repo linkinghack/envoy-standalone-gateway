@@ -78,8 +78,7 @@ func (s *synthesis) initSourceMap(cs *protocol.ConfigSet) {
 		s.sourceMap[ir.ResourceKey{Kind: ir.ResourceRoute, Name: routeConfigName(l.Metadata.Name)}] = src
 	}
 	for _, u := range cs.Upstreams {
-		s.sourceMap[ir.ResourceKey{Kind: ir.ResourceCluster, Name: clusterResourceName(u.Metadata.Name)}] =
-			ir.SourceRef{File: u.Origin.File, Kind: protocol.KindUpstream, Name: u.Metadata.Name}
+		s.sourceMap[ir.ResourceKey{Kind: ir.ResourceCluster, Name: clusterResourceName(u.Metadata.Name)}] = ir.SourceRef{File: u.Origin.File, Kind: protocol.KindUpstream, Name: u.Metadata.Name}
 	}
 	gw := ir.SourceRef{Kind: protocol.KindGateway, Name: protocol.DefaultGatewayName}
 	if cs.Gateway != nil {
@@ -121,9 +120,10 @@ func (s *synthesis) extractCompiledSecrets(cs *protocol.ConfigSet) []CompileErro
 				}
 				s.secrets = append(s.secrets, secret)
 				s.compiledSecrets[secret.GetName()] = true
-				s.sourceMap[ir.ResourceKey{Kind: ir.ResourceSecret, Name: secret.GetName()}] =
-					ir.SourceRef{File: pl.Origin.File, Kind: protocol.KindListener, Name: name,
-						Path: fmt.Sprintf("spec.tls.certificates[%d]", certIdx)}
+				s.sourceMap[ir.ResourceKey{Kind: ir.ResourceSecret, Name: secret.GetName()}] = ir.SourceRef{
+					File: pl.Origin.File, Kind: protocol.KindListener, Name: name,
+					Path: fmt.Sprintf("spec.tls.certificates[%d]", certIdx),
+				}
 			}
 			certIdx++
 		}
@@ -275,8 +275,10 @@ func (lt locatedTarget) apply(p *protocol.EnvoyPatch) error {
 }
 
 // patchMarshal 是 patch 域的 protojson 序列化：proto 原始字段名（snake_case），
-// 与协议 §7 文档示例一致。
-var patchMarshal = protojson.MarshalOptions{UseProtoNames: true}
+// 与协议 §7 文档示例一致；EmitDefaultValues 使未显式设置的字段也出现在
+// patch 文档中（缺省字段 protojson 默认省略，jsonPatch 的 replace 需要目标键存在，
+// 协议 §7.1 示例正是 replace /dns_lookup_family 这种写法）。
+var patchMarshal = protojson.MarshalOptions{UseProtoNames: true, EmitDefaultValues: true}
 
 // locateTargets 按 C1 定表把 target 解析为工作集中的具体资源。
 func (s *synthesis) locateTargets(kind protocol.Kind, name string, t patchTarget, obj any) ([]locatedTarget, error) {
@@ -399,10 +401,10 @@ func (s *synthesis) locateUpstreamTargets(name string, t patchTarget) ([]located
 
 // envoyResourceTypes 是 EnvoyResources 支持分发的 @type 全集（v0 资源级，C2）。
 var envoyResourceTypes = map[string]func() proto.Message{
-	"type.googleapis.com/envoy.config.listener.v3.Listener":              func() proto.Message { return &listenerv3.Listener{} },
-	"type.googleapis.com/envoy.config.cluster.v3.Cluster":                func() proto.Message { return &clusterv3.Cluster{} },
-	"type.googleapis.com/envoy.config.route.v3.RouteConfiguration":       func() proto.Message { return &routev3.RouteConfiguration{} },
-	"type.googleapis.com/envoy.config.endpoint.v3.ClusterLoadAssignment": func() proto.Message { return &endpointv3.ClusterLoadAssignment{} },
+	"type.googleapis.com/envoy.config.listener.v3.Listener":                func() proto.Message { return &listenerv3.Listener{} },
+	"type.googleapis.com/envoy.config.cluster.v3.Cluster":                  func() proto.Message { return &clusterv3.Cluster{} },
+	"type.googleapis.com/envoy.config.route.v3.RouteConfiguration":         func() proto.Message { return &routev3.RouteConfiguration{} },
+	"type.googleapis.com/envoy.config.endpoint.v3.ClusterLoadAssignment":   func() proto.Message { return &endpointv3.ClusterLoadAssignment{} },
 	"type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.Secret": func() proto.Message { return &tlsv3.Secret{} },
 }
 

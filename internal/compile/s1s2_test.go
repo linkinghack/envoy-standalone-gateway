@@ -33,6 +33,22 @@ func TestS1PassF2(t *testing.T) {
 	}
 	_, errs := link(cs, Options{Mode: ModeStatic}, defaultCertVerifier())
 	assertNoErrs(t, errs)
+
+	// T5 验收：F1~F6 全流水线（两模式）产出合法 IR（每次重新加载，避免共享默认填充状态）。
+	for _, mode := range []Mode{ModeStatic, ModeXDS} {
+		fresh, loadErrs := protocol.LoadDir(dir)
+		if len(loadErrs) != 0 {
+			t.Fatalf("S1 reload errors: %v", loadErrs)
+		}
+		out, cerrs := Compile(fresh, Options{Mode: mode})
+		assertNoErrs(t, cerrs)
+		if out == nil || out.Version == "" {
+			t.Fatalf("S1 %s: IR incomplete", mode)
+		}
+		if verrs := validateIR(out); hasErrors(verrs) {
+			t.Fatalf("S1 %s: IR failed re-validation:\n%s", mode, formatErrs(verrs))
+		}
+	}
 }
 
 // TestS2PassF2 是验收用例：S2 演练配置过 F2 零错误。
@@ -89,4 +105,20 @@ spec:
 	}
 	_, errs := link(cs, Options{Mode: ModeStatic}, defaultCertVerifier())
 	assertNoErrs(t, errs)
+
+	// T5 验收：F1~F6 全流水线（两模式）产出合法 IR。
+	for _, mode := range []Mode{ModeStatic, ModeXDS} {
+		fresh, loadErrs := protocol.LoadDir(dir)
+		if len(loadErrs) != 0 {
+			t.Fatalf("S2 reload errors: %v", loadErrs)
+		}
+		out, cerrs := Compile(fresh, Options{Mode: mode})
+		assertNoErrs(t, cerrs)
+		if out == nil || out.Version == "" {
+			t.Fatalf("S2 %s: IR incomplete", mode)
+		}
+		if verrs := validateIR(out); hasErrors(verrs) {
+			t.Fatalf("S2 %s: IR failed re-validation:\n%s", mode, formatErrs(verrs))
+		}
+	}
 }

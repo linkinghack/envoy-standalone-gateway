@@ -227,8 +227,7 @@ func (s *synthesis) extractEDS() ([]*endpointv3.ClusterLoadAssignment, []Compile
 		cl.EdsClusterConfig = &clusterv3.Cluster_EdsClusterConfig{EdsConfig: adsConfigSource()}
 		endpoints = append(endpoints, cla)
 		// SourceMap：EDS 资源归属同一 Upstream。
-		s.sourceMap[ir.ResourceKey{Kind: ir.ResourceEndpoints, Name: cla.GetClusterName()}] =
-			s.sourceMap[ir.ResourceKey{Kind: ir.ResourceCluster, Name: cl.GetName()}]
+		s.sourceMap[ir.ResourceKey{Kind: ir.ResourceEndpoints, Name: cla.GetClusterName()}] = s.sourceMap[ir.ResourceKey{Kind: ir.ResourceCluster, Name: cl.GetName()}]
 	}
 	return endpoints, errs
 }

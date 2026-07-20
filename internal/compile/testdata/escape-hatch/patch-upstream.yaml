@@ -1,0 +1,16 @@
+# 协议 §7.1 文档示例逐字（escape hatch 正例）。
+# 文档示例仅给出 Upstream 对象；编译所需的最小 Listener/Route 见 supplement.yaml。
+kind: Upstream
+metadata: {name: user-svc}
+spec:
+  endpoints: [{address: 10.0.0.1, port: 8080}]
+  envoyPatch:
+    - target: cluster           # 该对象产出的资源类别：cluster | listener | virtualHost | route ...
+      op: merge                 # merge = JSON Merge Patch (RFC 7386)
+      value:
+        upstream_connection_options:
+          tcp_keepalive: {keepalive_time: 300}
+    - target: cluster
+      op: jsonPatch             # RFC 6902，精确操作
+      value:
+        - {op: replace, path: /dns_lookup_family, value: V4_ONLY}

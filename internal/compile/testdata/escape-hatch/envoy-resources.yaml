@@ -1,0 +1,20 @@
+# 协议 §7.2 文档示例逐字（escape hatch 正例）。
+# 文档中 load_assignment 为 {...} 占位，此处填入合法 CLA（同语义）。
+apiVersion: esgw/v1alpha1
+kind: EnvoyResources
+metadata:
+  name: custom-lua
+spec:
+  resources:
+    - "@type": type.googleapis.com/envoy.config.cluster.v3.Cluster
+      name: legacy-cluster
+      connect_timeout: 3s
+      type: STRICT_DNS
+      load_assignment:
+        cluster_name: legacy-cluster
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address: {address: legacy.internal, port_value: 9000}
+  # allowOverride: false        # 默认 false：与编译产物重名 = 编译错误；true = 替换
