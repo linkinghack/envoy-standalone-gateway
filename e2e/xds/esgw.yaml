@@ -1,0 +1,12 @@
+# ADS e2e 用的 esgw.yaml（Sprint 260720 T5）。
+# listen 保持 loopback（A7 硬校验的合规形态）：envoy 经 network_mode: service:esgw
+# 与 esgw 共享网络命名空间，127.0.0.1:18000 对两者同义（见 docker-compose.yaml）。
+# adminAddress 用 0.0.0.0：envoy admin 只绑 127.0.0.1 时 docker 端口发布
+# （DNAT 到容器 eth0）不可达；发布侧已限定 127.0.0.1:${E2E_ADMIN_PORT}。
+deliver:
+  mode: xds
+  xds:
+    listen: 127.0.0.1:18000
+    nodeID: esgw-node
+    nodeCluster: esgw
+    adminAddress: 0.0.0.0:9901

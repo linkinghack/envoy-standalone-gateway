@@ -1,0 +1,61 @@
+# e2e ADS 模式（Sprint 260720 T5，验收 A2/A3/A4/A5/A7）：
+# esgw serve（xds 模式下发 S1 场景）+ envoy（官方镜像，以 esgw bootstrap
+# 导出的接入 bootstrap 连 ADS）+ 两个 http-echo 后端。
+# 由 run.sh 驱动，勿直接 docker compose up（二进制与 bootstrap 需先生成）。
+#
+# 拓扑取舍（决策见 run.sh 头部注释与 T5 进展记录）：四个服务经
+# network_mode: service:esgw 共享 esgw 的网络命名空间（pod 形态），于是——
+#   - esgw 的 deliver.xds.listen 保持 127.0.0.1:18000（loopback 硬校验的合规
+#     形态，与生产默认一致），envoy 以 127.0.0.1:18000 连 ADS；
+#   - S1 输入的 127.0.0.1:3000/4000 端点与 testdata/certs/ 相对证书路径
+#     原样可用，输入配置零改写（static e2e 的 sed/awk 弥合在这里不需要）；
+#   - 端口发布（80/443/9901）只能声明在 netns 属主 esgw 上。
+services:
+  esgw:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command:
+      - serve
+      - -c
+      - /etc/esgw/esgw.yaml
+      - -f
+      - /testdata/s1/input
+      - -log-level
+      - debug # A5：ACK 日志为 Debug 级（T3 级别取舍），e2e 以 debug 启动
+    volumes:
+      - ./esgw.yaml:/etc/esgw/esgw.yaml:ro
+      # S1 输入与证书同挂 /testdata（F2/F3 的相对路径 testdata/certs/ 以
+      # working_dir / 为基准解析），输入目录零改写复用。
+      - ../../testdata:/testdata:ro
+    working_dir: /
+    ports:
+      - "${E2E_HTTP_PORT:-18080}:80"
+      - "${E2E_HTTPS_PORT:-18443}:443"
+      - "127.0.0.1:${E2E_ADMIN_PORT:-19901}:9901"
+    networks:
+      - e2e
+  envoy:
+    image: ${ENVOY_IMAGE:?ENVOY_IMAGE is required (set by e2e/xds/run.sh)}
+    command: ["-c", "/etc/envoy/bootstrap.yaml"]
+    volumes:
+      - ./generated/bootstrap.yaml:/etc/envoy/bootstrap.yaml:ro
+      - ../../testdata:/testdata:ro # SDS 证书按 testdata/certs/ 相对路径读取
+    working_dir: /
+    network_mode: service:esgw
+    depends_on:
+      - esgw
+      - www
+      - blog
+  www:
+    image: hashicorp/http-echo
+    command: ["-listen=:3000", "-text=www-backend"]
+    network_mode: service:esgw
+  blog:
+    image: hashicorp/http-echo
+    command: ["-listen=:4000", "-text=blog-backend"]
+    network_mode: service:esgw
+
+networks:
+  e2e:
+    driver: bridge
