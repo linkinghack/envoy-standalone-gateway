@@ -56,3 +56,16 @@ jobs:
       - uses: actions/checkout@v4
       - name: S1 traffic smoke (docker compose)
         run: e2e/run.sh
+
+  # Sprint 260720 T5：ADS 模式 e2e——esgw serve（xds）+ 真实 Envoy（接入
+  # bootstrap 连 ADS）跑通 S1 场景（验收 A2/A3/A4/A5/A7，闭环 M0 第 3 项）。
+  e2e-xds:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: true
+      - name: ADS traffic e2e (docker compose)
+        run: e2e/xds/run.sh
