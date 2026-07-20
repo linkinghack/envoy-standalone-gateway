@@ -33,8 +33,11 @@ jobs:
       - name: go-licenses check
         run: |
           go install github.com/google/go-licenses@latest
-          # 项目本体 AGPL-3.0：禁止 forbidden 类（专有/不兼容）许可证依赖
-          go-licenses check --disallowed_types=forbidden ./...
+          # 项目本体 AGPL-3.0：禁止 forbidden 类（专有/不兼容）许可证依赖。
+          # go-licenses 会把仓库自身 module 也当作依赖并判为 forbidden AGPL-3.0，
+          # 需用 --ignore 排除本体，只检查第三方依赖。
+          go-licenses check --disallowed_types=forbidden \
+            --ignore github.com/linkinghack/envoy-standalone-gateway ./...
 
   # Sprint 260719 T7：按 internal/version.EnvoyMatrixVersions（单一事实来源，
   # 脚本内 sed 解析常量）拉官方镜像，对全部 golden static 产物跑
