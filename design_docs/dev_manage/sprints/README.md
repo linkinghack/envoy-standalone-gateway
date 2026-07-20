@@ -16,3 +16,4 @@
 | --- | --- | --- | --- |
 | [260719](260719/) | 2026-07-19 ~ 2026-07-20 | M0：协议 Go 类型 + 编译器 F1~F6 + static 渲染 + `esgw compile` CLI + golden/e2e 测试设施 | 已完成——A1~A8 核验全达成，远端 CI 绿 |
 | [260720](260720/) | 2026-07-20 | S2 / M1：xDS 下发与运行时骨架（M-CORE + esgw.yaml + deliver/xds + ADS server + 接入 bootstrap + ADS e2e，闭环 M0 验收第 3 项） | 已完成——A1~A8 核验全达成、M0 第 ③ 项闭环、远端 CI 五 job 全绿 |
+| [260721](260721/) | 2026-07-20 | S3 第一阶段：M-STORE SQLite + M-CONF 草稿哈希与版本快照基础闭环 | 已完成——T1~T3 完成，`make build test lint` 全绿；发布流/API/fsnotify 待后续 task |
