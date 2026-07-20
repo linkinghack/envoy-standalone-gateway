@@ -27,7 +27,7 @@ architecture §8 计划的全部 7 份模块详细设计已完成并交叉互认
 
 | Sprint | 里程碑 | 主题 | 范围概要 | 主要设计依据 | 前置 |
 |---|---|---|---|---|---|
-| **S1 (260719)** | M0 | 协议与编译器 | `internal/protocol` 五对象类型/strict decode/JSON Schema；`internal/compile` F1~F6 流水线 + escape hatch；static 渲染；`esgw compile` CLI；golden file 测试 + envoy validate + S1 真实流量 e2e | [协议 v0](../system_design/260716-1-gateway-config-protocol-v0.md)、[编译层](../system_design/260716-2-compile-ir-design.md) | — |
+| **S1 (260719)** | M0 | 协议与编译器 | `internal/protocol` 五对象类型/strict decode/JSON Schema；`internal/compile` F1~F6 流水线 + escape hatch；static 渲染；`esgw compile` CLI；golden file 测试 + envoy validate + S1 真实流量 e2e | [协议 v0](../system_design/260716-1-gateway-config-protocol-v0.md)、[编译层](../system_design/260716-2-compile-ir-design.md) | — ✅ 已完成（2026-07-20，A1~A8 核验见 [sprints/260719](sprints/260719/plan_todos_trace.md)） |
 | S2 | M1 | xDS 下发与运行时骨架 | M-CORE 装配/生命周期（**补轻量设计文档 + esgw.yaml schema**）；`deliver/xds`（ADS server、FromIR、ACK/NACK）；接入 bootstrap 生成与 `esgw bootstrap` 命令；ADS 拉起 S1 配置 e2e（M0 验收第 3 项在此闭环） | [下发层](../system_design/260717-1-deliver-layer-design.md) §1~§3、§6 | S1 |
 | S3 | M1 | 配置域与发布流 | M-STORE（SQLite/迁移）；M-CONF（文件真源加载、Origin 定位 CRUD、版本快照、双视角 diff、回滚、发布流状态机、fsnotify 外部修改检测）；原生 static → IR 解析入口（FR-2.1） | [配置域](../system_design/260717-2-config-domain-design.md) | S1 |
 | S4 | M1 | 状态采集与生效确认 | M-STATE（admin client 白名单/串行调度、状态归一化、归属反解、确认快速通道、时间序列环形缓冲、Prometheus 透传）；发布流 CONFIRMING→EFFECTIVE 闭环联调 | [状态采集](../system_design/260717-4-state-collection-design.md) | S2、S3 |

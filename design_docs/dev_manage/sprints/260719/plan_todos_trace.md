@@ -56,3 +56,10 @@
 | A8 | CI 全绿；make test/lint/e2e 本地可复现 | ✅ 达成（本地全绿；远端 CI 绿待推送后确认） | 本地 `make build/test/lint` 全绿（golangci-lint 0 issues）、`make e2e`、`make validate-matrix` 通过；CI 四个 job（build-test-lint/licenses/validate-matrix/e2e）已配置 |
 
 未达项：无。唯一保留说明：A8 的「CI 全绿」以本地等效命令全绿为证据，GitHub Actions 实际运行结果需推送后确认（本冲刺工作流约定不 push）。
+
+## 冲刺关闭（2026-07-20）
+
+- 主会话独立复验：`make validate-matrix`（1.37.5/1.38.3/1.39.0 × 6 产物全 OK）与 `make e2e`（四断言全过）二次确认通过；`make build/test/lint` 全绿。
+- 索引与路线图已更新：sprints/README 状态「已完成（待验收）」，260719-1-dev-roadmap S1 行标记完成。
+- M0 验收第 3 项「同一 IR 经 ADS 正常拉起」按既定规划留 S2 冲刺闭环（requirements §3 范围外）。
+- 下一冲刺：S2（xDS 下发与运行时骨架），依赖设计 [260717-1 §1~§3、§6](../../../system_design/260717-1-deliver-layer-design.md)，另需补 M-CORE 装配轻量设计与 esgw.yaml schema（路线图 §1 小缺口）。
