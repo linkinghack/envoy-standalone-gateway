@@ -26,16 +26,16 @@ lint: ## golangci-lint
 	golangci-lint run ./...
 
 .PHONY: e2e
-e2e: ## docker 冒烟测试（T7 启用）
-	@echo "e2e not yet implemented (Sprint 260719 T7)"
+e2e: ## S1 真实流量冒烟（docker compose；默认 go test 不触发）
+	e2e/run.sh
 
 .PHONY: golden-update
 golden-update: ## 刷新 golden 快照（diff 必须人工评审）
 	go test ./internal/golden -update
 
 .PHONY: validate-matrix
-validate-matrix: ## 多版本 envoy --mode validate（T7 启用）
-	@echo "validate-matrix not yet implemented (Sprint 260719 T7)"
+validate-matrix: ## 多版本 envoy --mode validate（版本同源 internal/version 常量）
+	scripts/validate-matrix.sh
 
 .PHONY: tidy
 tidy:

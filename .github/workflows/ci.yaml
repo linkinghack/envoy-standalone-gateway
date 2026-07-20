@@ -36,10 +36,20 @@ jobs:
           # 项目本体 AGPL-3.0：禁止 forbidden 类（专有/不兼容）许可证依赖
           go-licenses check --disallowed_types=forbidden ./...
 
-  # Sprint 260719 T7 启用：按 internal/version.EnvoyMatrixVersions 拉官方镜像
-  # 对 golden static 产物跑 envoy --mode validate；e2e 独立 job 同期加入。
+  # Sprint 260719 T7：按 internal/version.EnvoyMatrixVersions（单一事实来源，
+  # 脚本内 sed 解析常量）拉官方镜像，对全部 golden static 产物跑
+  # envoy --mode validate（验收 A2：≥2 个 minor；当前矩阵 3 个版本）。
   validate-matrix:
     runs-on: ubuntu-latest
-    if: false # T7 placeholder
     steps:
-      - run: echo "enabled in Sprint 260719 T7"
+      - uses: actions/checkout@v4
+      - name: envoy --mode validate matrix
+        run: scripts/validate-matrix.sh
+
+  # Sprint 260719 T7：S1 真实流量冒烟（验收 A3；SD8：S2 仅 validate 级）。
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: S1 traffic smoke (docker compose)
+        run: e2e/run.sh
