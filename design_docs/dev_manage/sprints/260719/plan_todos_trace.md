@@ -16,7 +16,7 @@
 | T3 | internal/compile F2：链接与语义校验 + CompileError 模型 | 已完成 | T2 | A5 |
 | T4 | internal/compile F3：四类 Builder 与策略映射 | 已完成 | T3 | A1、C4 |
 | T5 | internal/compile F4/F5/F6 + IR/哈希/SourceMap | 已完成 | T4 | A4、A6、C1 |
-| T6 | static 渲染 + F7 envoycheck + `esgw compile` CLI | 未开始 | T5 | A2、A7 |
+| T6 | static 渲染 + F7 envoycheck + `esgw compile` CLI | 已完成 | T5 | A2、A7 |
 | T7 | golden/e2e 测试设施与 CI 集成收口 | 未开始 | T6（golden 可提前随 T4/T5 增量补） | A1~A3、A8 |
 
 状态枚举：`未开始` / `进行中` / `已完成` / `受阻(附原因)`
@@ -31,6 +31,7 @@
 | 2026-07-19 | T3 完成（commits `86333d5`/`2b3714a`/`feda68a`）：CompileError/SourceRef 错误模型、F2 链接与语义校验全规则、Compile() 骨架（F3+ 占位）、EndpointSource 接口定义；33 用例全绿，S1/S2 过 F2 零错误；ipAccess 层级等 6 条设计澄清见 T3 进展记录；T4 开工 |
 | 2026-07-19 | T4 完成（commits `a9d354b`/`40d2705`/`79aa56b`）：go-control-plane/envoy v1.37.0 依赖、F3 四类 Builder（Listener/Route/Upstream/Policy）与策略归一化、C4 决议落地；S1/S2 主干 + 各 Builder 边界例全绿，两次构建 protojson 逐字节相同（确定性锁定），产物全量过 PGV 自检；rateLimit.key 等 11 条实现决策/偏离见 T4 进展记录；T5 开工 |
 | 2026-07-19 | T5 完成（commits `a649447`/`eda144b`/`e1b0cdf`/`bc0b5e6`/`191f708`）：internal/ir 落地（IR/SourceMap/确定性哈希）、F4 escape hatch 合成（C1 决议落地：rule 可选 name + target 定表）、F5 两模式形态化、F6 PGV+引用闭合，Compile() F1~F6 全流水线打通；§7.1/§7.2 逐字正例、7 类坏 patch 反例、两模式对拍、确定性与 300 轮 patch 模糊测试全绿；SourceRef 移入 ir 等 10 条实现决策见 T5 进展记录；T6 开工 |
+| 2026-07-20 | T6 完成（commits `ebfbfa7`/`c98b540`/`1ef55de`）：internal/deliver/static.Render 纯函数落地（文件头版本注释、node.metadata 渲染期注入 esgw.config_version、admin 覆盖 M0 默认 uds /tmp/esgw-admin.sock、protojson→map→确定性 YAML 发射器）；deliver.SnapshotJSON 定 xds 产物形态；envoycheck 封装 F7（发现顺序 显式路径→ESGW_ENVOY_PATH→PATH、超时与 stderr 尾部捕获、无二进制降级 Warning）；`esgw compile -f <dir> --mode static|xds -o <file> [--envoy-validate[=<path>]]` 交付，F7 由 CLI 层编排（Compile 保持纯函数），错误按 `error|warning: file:kind/name:path: message` 逐行输出、Error exit 1 / 仅 Warning exit 0 / 用法 exit 2；渲染/CLI 集成测试全绿，make build/test/lint 全绿；admin uds 路径取值等 6 条实现决策/偏离见 T6 进展记录；T7 开工 |
 
 ## 决议记录（冲刺内产生的设计决策）
 
