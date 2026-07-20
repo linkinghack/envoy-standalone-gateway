@@ -4,6 +4,7 @@ go 1.26.5
 
 require (
 	github.com/envoyproxy/go-control-plane/envoy v1.37.0
+	github.com/evanphx/json-patch/v5 v5.9.11
 	github.com/invopop/jsonschema v0.14.0
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
 	google.golang.org/protobuf v1.36.11
