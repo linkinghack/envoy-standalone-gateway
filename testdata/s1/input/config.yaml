@@ -1,0 +1,60 @@
+# 协议 §8.1（S1：单机多域名 TLS 反代）演练 YAML 原文，唯一改动：
+# 证书路径由 /etc/esgw/certs/ 替换为仓库内提交的测试证书 testdata/certs/
+# （相对仓库根；替换说明见 testdata/s1/README.md 与 testdata/certs/README.md）。
+# 其余内容与 design_docs/system_design/260716-1-gateway-config-protocol-v0.md §8.1 逐字一致。
+apiVersion: esgw/v1alpha1
+kind: Listener
+metadata: {name: https}
+spec:
+  port: 443
+  protocol: HTTPS
+  tls:
+    certificates:
+      - {certFile: testdata/certs/www.crt,  keyFile: testdata/certs/www.key}
+      - {certFile: testdata/certs/blog.crt, keyFile: testdata/certs/blog.key}
+---
+kind: Listener
+apiVersion: esgw/v1alpha1
+metadata: {name: http}
+spec: {port: 80, protocol: HTTP}
+---
+apiVersion: esgw/v1alpha1
+kind: Route
+metadata: {name: www}
+spec:
+  listeners: [https]
+  hostnames: [www.example.com]
+  rules:
+    - match: {path: {prefix: /}}
+      backends: [{upstream: www-app}]
+---
+apiVersion: esgw/v1alpha1
+kind: Route
+metadata: {name: blog}
+spec:
+  listeners: [https]
+  hostnames: [blog.example.com]
+  rules:
+    - match: {path: {prefix: /}}
+      backends: [{upstream: blog-app}]
+---
+apiVersion: esgw/v1alpha1
+kind: Route
+metadata: {name: http-redirect}
+spec:
+  listeners: [http]
+  rules:
+    - match: {path: {prefix: /}}
+      redirect: {scheme: https, code: 301}
+---
+apiVersion: esgw/v1alpha1
+kind: Upstream
+metadata: {name: www-app}
+spec:
+  endpoints: [{address: 127.0.0.1, port: 3000}]
+---
+apiVersion: esgw/v1alpha1
+kind: Upstream
+metadata: {name: blog-app}
+spec:
+  endpoints: [{address: 127.0.0.1, port: 4000}]

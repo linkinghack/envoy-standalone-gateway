@@ -1,0 +1,11 @@
+[
+  {
+    "stage": "patch",
+    "severity": "Error",
+    "file": "testdata/errors/envoyresources-conflict/input/config.yaml",
+    "kind": "EnvoyResources",
+    "name": "colliding",
+    "path": "spec.resources[0]",
+    "message": "resource cluster/us/app conflicts with an existing resource of the same name (set allowOverride: true to replace the compiled resource)"
+  }
+]

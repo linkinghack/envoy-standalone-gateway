@@ -1,0 +1,11 @@
+[
+  {
+    "stage": "link",
+    "severity": "Error",
+    "file": "testdata/errors/https-missing-tls/input/config.yaml",
+    "kind": "Listener",
+    "name": "https",
+    "path": "spec.tls",
+    "message": "spec.tls is required for protocol HTTPS"
+  }
+]

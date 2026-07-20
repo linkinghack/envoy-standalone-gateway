@@ -1,0 +1,40 @@
+# 错误用例：EnvoyResources 与编译产物重名且未声明 allowOverride
+# （默认 false：重名 = 编译错误，patch 阶段；true 替换态正例见
+# testdata/envoy-resources-override）。
+apiVersion: esgw/v1alpha1
+kind: Listener
+metadata: {name: http}
+spec: {port: 80, protocol: HTTP}
+---
+apiVersion: esgw/v1alpha1
+kind: Route
+metadata: {name: api}
+spec:
+  listeners: [http]
+  rules:
+    - match: {path: {prefix: /}}
+      backends: [{upstream: app}]
+---
+apiVersion: esgw/v1alpha1
+kind: Upstream
+metadata: {name: app}
+spec:
+  endpoints: [{address: 127.0.0.1, port: 9000}]
+---
+apiVersion: esgw/v1alpha1
+kind: EnvoyResources
+metadata:
+  name: colliding
+spec:
+  resources:
+    - "@type": type.googleapis.com/envoy.config.cluster.v3.Cluster
+      name: us/app
+      connect_timeout: 9s
+      type: STATIC
+      load_assignment:
+        cluster_name: us/app
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address: {address: 9.9.9.9, port_value: 1}

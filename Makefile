@@ -30,8 +30,8 @@ e2e: ## docker 冒烟测试（T7 启用）
 	@echo "e2e not yet implemented (Sprint 260719 T7)"
 
 .PHONY: golden-update
-golden-update: ## 刷新 golden 快照（T7 启用）
-	@echo "golden-update not yet implemented (Sprint 260719 T7)"
+golden-update: ## 刷新 golden 快照（diff 必须人工评审）
+	go test ./internal/golden -update
 
 .PHONY: validate-matrix
 validate-matrix: ## 多版本 envoy --mode validate（T7 启用）

@@ -1,0 +1,10 @@
+# 错误用例：两个 Listener 的 address:port 组合相同（F2 跨对象约束，link 阶段）。
+apiVersion: esgw/v1alpha1
+kind: Listener
+metadata: {name: http-a}
+spec: {port: 80, protocol: HTTP}
+---
+apiVersion: esgw/v1alpha1
+kind: Listener
+metadata: {name: http-b}
+spec: {port: 80, protocol: HTTP}

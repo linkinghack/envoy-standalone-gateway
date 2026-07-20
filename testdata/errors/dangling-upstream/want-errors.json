@@ -1,0 +1,11 @@
+[
+  {
+    "stage": "link",
+    "severity": "Error",
+    "file": "testdata/errors/dangling-upstream/input/config.yaml",
+    "kind": "Route",
+    "name": "api",
+    "path": "spec.rules[0].backends[0].upstream",
+    "message": "dangling reference: upstream \"ghost\" not found"
+  }
+]

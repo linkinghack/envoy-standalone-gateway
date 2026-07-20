@@ -1,0 +1,5 @@
+# 错误用例：protocol: HTTPS 的 Listener 未配置 tls（F2 TLS 必填约束，link 阶段）。
+apiVersion: esgw/v1alpha1
+kind: Listener
+metadata: {name: https}
+spec: {port: 443, protocol: HTTPS}

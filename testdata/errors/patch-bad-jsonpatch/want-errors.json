@@ -1,0 +1,11 @@
+[
+  {
+    "stage": "patch",
+    "severity": "Error",
+    "file": "testdata/errors/patch-bad-jsonpatch/input/config.yaml",
+    "kind": "Upstream",
+    "name": "user-svc",
+    "path": "spec.envoyPatch[0]",
+    "message": "target \"cluster\": apply jsonPatch: replace operation does not apply: doc is missing key: /no_such_field: missing value"
+  }
+]

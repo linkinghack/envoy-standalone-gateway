@@ -1,0 +1,21 @@
+# 协议 §7.2 allowOverride: true 态：原生 Cluster 与编译产物重名（us/app），
+# 整体替换编译产物（替换后 SourceMap 归属 EnvoyResources 对象）。
+# 反面对照（默认 false 重名 = 编译错误）见 testdata/errors/envoyresources-conflict。
+apiVersion: esgw/v1alpha1
+kind: EnvoyResources
+metadata:
+  name: override-cluster
+spec:
+  allowOverride: true
+  resources:
+    - "@type": type.googleapis.com/envoy.config.cluster.v3.Cluster
+      name: us/app
+      connect_timeout: 9s
+      type: STATIC
+      load_assignment:
+        cluster_name: us/app
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address: {address: 9.9.9.9, port_value: 1}

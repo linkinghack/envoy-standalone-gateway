@@ -1,0 +1,11 @@
+[
+  {
+    "stage": "link",
+    "severity": "Error",
+    "file": "testdata/errors/hostname-conflict/input/config.yaml",
+    "kind": "Route",
+    "name": "web-b",
+    "path": "spec.hostnames[0]",
+    "message": "hostname \"www.example.com\" on listener \"http\" conflicts with route \"web-a\" (same match precision: exact \u003e wildcard \u003e fallback)"
+  }
+]

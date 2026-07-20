@@ -1,0 +1,93 @@
+# 协议 §8.2（S2：API 网关）演练 YAML 原文 + 同构补全。
+# 文档原文省略了 https Listener 与 user-svc / user-svc-canary / auth-svc
+# 三个 Upstream（原文标注"同构，略"），本文件按 T3 测试中的补全版本补齐
+# （internal/compile/s1s2_test.go 的 supplement 同构）。https Listener 证书
+# 路径使用仓库内测试证书 testdata/certs/api.{crt,key}（相对仓库根）。
+apiVersion: esgw/v1alpha1
+kind: Route
+metadata: {name: api}
+spec:
+  listeners: [https]
+  hostnames: [api.example.com]
+  policies: [jwt-main, cors-web]        # Route 级：默认全部规则生效
+  rules:
+    - match: {path: {exact: /auth/login}, methods: [POST]}
+      backends: [{upstream: auth-svc}]
+      policies:
+        - jwt-off                        # 就近覆盖：登录免 JWT
+        - rateLimit: {requests: 10, unit: minute, key: clientIP}   # 内联限流
+    - match: {path: {prefix: /users/}}
+      rewrite: {pathPrefix: /}
+      backends:
+        - {upstream: user-svc, weight: 90}
+        - {upstream: user-svc-canary, weight: 10}
+      timeout: 10s
+      retry: {attempts: 2, perTryTimeout: 2s, on: [5xx, connect-failure]}
+    - match: {path: {prefix: /orders/}}
+      rewrite: {pathPrefix: /}
+      backends: [{upstream: order-svc}]
+      timeout: 30s
+---
+apiVersion: esgw/v1alpha1
+kind: Policy
+metadata: {name: jwt-main}
+spec:
+  jwt:
+    issuer: https://auth.example.com
+    audiences: [api.example.com]
+    jwks: {uri: https://auth.example.com/.well-known/jwks.json}
+    forwardPayloadHeader: x-jwt-payload
+---
+apiVersion: esgw/v1alpha1
+kind: Policy
+metadata: {name: jwt-off}
+spec:
+  jwt: {optional: true}                  # 同类型就近覆盖 → 该 rule 实际关闭强制校验
+---
+apiVersion: esgw/v1alpha1
+kind: Policy
+metadata: {name: cors-web}
+spec:
+  cors:
+    allowOrigins: ["https://*.example.com"]
+    allowMethods: [GET, POST, PUT, DELETE]
+    allowHeaders: [authorization, content-type]
+    maxAge: 24h
+---
+apiVersion: esgw/v1alpha1
+kind: Upstream
+metadata: {name: order-svc}
+spec:
+  dns: {hostname: order.internal, port: 9090}
+  connection: {http2: true}              # gRPC 后端
+  healthCheck: {http: {path: /healthz}, interval: 10s, timeout: 2s,
+                healthyThreshold: 2, unhealthyThreshold: 3}
+# ── 以下为文档省略部分的同构补全 ──
+---
+apiVersion: esgw/v1alpha1
+kind: Listener
+metadata: {name: https}
+spec:
+  port: 443
+  protocol: HTTPS
+  tls:
+    certificates:
+      - {certFile: testdata/certs/api.crt, keyFile: testdata/certs/api.key}
+---
+apiVersion: esgw/v1alpha1
+kind: Upstream
+metadata: {name: user-svc}
+spec:
+  endpoints: [{address: 10.0.0.1, port: 8080}]
+---
+apiVersion: esgw/v1alpha1
+kind: Upstream
+metadata: {name: user-svc-canary}
+spec:
+  endpoints: [{address: 10.0.0.2, port: 8080}]
+---
+apiVersion: esgw/v1alpha1
+kind: Upstream
+metadata: {name: auth-svc}
+spec:
+  endpoints: [{address: 10.0.0.3, port: 8080}]

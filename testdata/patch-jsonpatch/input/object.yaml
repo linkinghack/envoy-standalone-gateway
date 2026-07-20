@@ -1,0 +1,13 @@
+# 协议 §7.1 文档示例逐字（jsonPatch 形态正例；merge 形态见 testdata/patch-merge）。
+# 文档示例仅给出 Upstream 对象且省略 apiVersion（§7 语境假设信封），此处补信封；
+# 编译所需的最小 Listener/Route 见同目录 supplement.yaml。
+apiVersion: esgw/v1alpha1
+kind: Upstream
+metadata: {name: user-svc}
+spec:
+  endpoints: [{address: 10.0.0.1, port: 8080}]
+  envoyPatch:
+    - target: cluster
+      op: jsonPatch             # RFC 6902，精确操作
+      value:
+        - {op: replace, path: /dns_lookup_family, value: V4_ONLY}

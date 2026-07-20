@@ -1,0 +1,11 @@
+[
+  {
+    "stage": "link",
+    "severity": "Error",
+    "file": "testdata/errors/listener-address-conflict/input/config.yaml",
+    "kind": "Listener",
+    "name": "http-b",
+    "path": "spec.port",
+    "message": "address:port \"0.0.0.0:80\" conflicts with listener \"http-a\" (must be unique)"
+  }
+]

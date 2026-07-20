@@ -1,0 +1,443 @@
+{
+  "clusters": {
+    "jwt-jwks/auth.example.com:443": {
+      "connect_timeout": "5s",
+      "load_assignment": {
+        "cluster_name": "jwt-jwks/auth.example.com:443",
+        "endpoints": [
+          {
+            "lb_endpoints": [
+              {
+                "endpoint": {
+                  "address": {
+                    "socket_address": {
+                      "address": "auth.example.com",
+                      "port_value": 443
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "name": "jwt-jwks/auth.example.com:443",
+      "transport_socket": {
+        "name": "envoy.transport_sockets.tls",
+        "typed_config": {
+          "@type": "type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext",
+          "sni": "auth.example.com"
+        }
+      },
+      "type": "STRICT_DNS"
+    },
+    "us/auth-svc": {
+      "connect_timeout": "5s",
+      "eds_cluster_config": {
+        "eds_config": {
+          "ads": {}
+        }
+      },
+      "name": "us/auth-svc",
+      "type": "EDS"
+    },
+    "us/order-svc": {
+      "connect_timeout": "5s",
+      "health_checks": [
+        {
+          "healthy_threshold": 2,
+          "http_health_check": {
+            "expected_statuses": [
+              {
+                "end": "201",
+                "start": "200"
+              }
+            ],
+            "path": "/healthz"
+          },
+          "interval": "10s",
+          "timeout": "2s",
+          "unhealthy_threshold": 3
+        }
+      ],
+      "load_assignment": {
+        "cluster_name": "us/order-svc",
+        "endpoints": [
+          {
+            "lb_endpoints": [
+              {
+                "endpoint": {
+                  "address": {
+                    "socket_address": {
+                      "address": "order.internal",
+                      "port_value": 9090
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "name": "us/order-svc",
+      "type": "LOGICAL_DNS",
+      "typed_extension_protocol_options": {
+        "envoy.extensions.upstreams.http.v3.HttpProtocolOptions": {
+          "@type": "type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions",
+          "explicit_http_config": {
+            "http2_protocol_options": {}
+          }
+        }
+      }
+    },
+    "us/user-svc": {
+      "connect_timeout": "5s",
+      "eds_cluster_config": {
+        "eds_config": {
+          "ads": {}
+        }
+      },
+      "name": "us/user-svc",
+      "type": "EDS"
+    },
+    "us/user-svc-canary": {
+      "connect_timeout": "5s",
+      "eds_cluster_config": {
+        "eds_config": {
+          "ads": {}
+        }
+      },
+      "name": "us/user-svc-canary",
+      "type": "EDS"
+    }
+  },
+  "endpoints": {
+    "us/auth-svc": {
+      "cluster_name": "us/auth-svc",
+      "endpoints": [
+        {
+          "lb_endpoints": [
+            {
+              "endpoint": {
+                "address": {
+                  "socket_address": {
+                    "address": "10.0.0.3",
+                    "port_value": 8080
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "us/user-svc": {
+      "cluster_name": "us/user-svc",
+      "endpoints": [
+        {
+          "lb_endpoints": [
+            {
+              "endpoint": {
+                "address": {
+                  "socket_address": {
+                    "address": "10.0.0.1",
+                    "port_value": 8080
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "us/user-svc-canary": {
+      "cluster_name": "us/user-svc-canary",
+      "endpoints": [
+        {
+          "lb_endpoints": [
+            {
+              "endpoint": {
+                "address": {
+                  "socket_address": {
+                    "address": "10.0.0.2",
+                    "port_value": 8080
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "listeners": {
+    "lis/https": {
+      "address": {
+        "socket_address": {
+          "address": "0.0.0.0",
+          "port_value": 443
+        }
+      },
+      "filter_chains": [
+        {
+          "filter_chain_match": {
+            "server_names": [
+              "api.example.com"
+            ]
+          },
+          "filters": [
+            {
+              "name": "envoy.filters.network.http_connection_manager",
+              "typed_config": {
+                "@type": "type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager",
+                "common_http_protocol_options": {
+                  "idle_timeout": "60s"
+                },
+                "http2_protocol_options": {},
+                "http_filters": [
+                  {
+                    "name": "envoy.filters.http.cors",
+                    "typed_config": {
+                      "@type": "type.googleapis.com/envoy.extensions.filters.http.cors.v3.Cors"
+                    }
+                  },
+                  {
+                    "name": "envoy.filters.http.jwt_authn",
+                    "typed_config": {
+                      "@type": "type.googleapis.com/envoy.extensions.filters.http.jwt_authn.v3.JwtAuthentication",
+                      "providers": {
+                        "jwt/18aa7e80": {
+                          "audiences": [
+                            "api.example.com"
+                          ],
+                          "forward_payload_header": "x-jwt-payload",
+                          "issuer": "https://auth.example.com",
+                          "remote_jwks": {
+                            "http_uri": {
+                              "cluster": "jwt-jwks/auth.example.com:443",
+                              "timeout": "5s",
+                              "uri": "https://auth.example.com/.well-known/jwks.json"
+                            }
+                          }
+                        }
+                      },
+                      "requirement_map": {
+                        "allow-missing": {
+                          "allow_missing": {}
+                        },
+                        "jwt/18aa7e80:api.example.com": {
+                          "provider_and_audiences": {
+                            "audiences": [
+                              "api.example.com"
+                            ],
+                            "provider_name": "jwt/18aa7e80"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "name": "envoy.filters.http.local_ratelimit",
+                    "typed_config": {
+                      "@type": "type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit",
+                      "stat_prefix": "local_ratelimit"
+                    }
+                  },
+                  {
+                    "name": "envoy.filters.http.router",
+                    "typed_config": {
+                      "@type": "type.googleapis.com/envoy.extensions.filters.http.router.v3.Router"
+                    }
+                  }
+                ],
+                "max_request_headers_kb": 60,
+                "rds": {
+                  "config_source": {
+                    "ads": {}
+                  },
+                  "route_config_name": "rc/https"
+                },
+                "server_name": "esgw",
+                "stat_prefix": "lis/https"
+              }
+            }
+          ],
+          "transport_socket": {
+            "name": "envoy.transport_sockets.tls",
+            "typed_config": {
+              "@type": "type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext",
+              "common_tls_context": {
+                "alpn_protocols": [
+                  "h2",
+                  "http/1.1"
+                ],
+                "tls_certificate_sds_secret_configs": [
+                  {
+                    "name": "crt/https/0",
+                    "sds_config": {
+                      "ads": {}
+                    }
+                  }
+                ],
+                "tls_params": {
+                  "tls_minimum_protocol_version": "TLSv1_2"
+                }
+              }
+            }
+          }
+        }
+      ],
+      "name": "lis/https"
+    }
+  },
+  "routes": {
+    "rc/https": {
+      "name": "rc/https",
+      "virtual_hosts": [
+        {
+          "domains": [
+            "api.example.com"
+          ],
+          "name": "vh/api",
+          "routes": [
+            {
+              "match": {
+                "headers": [
+                  {
+                    "name": ":method",
+                    "string_match": {
+                      "safe_regex": {
+                        "regex": "^(?:POST)$"
+                      }
+                    }
+                  }
+                ],
+                "path": "/auth/login"
+              },
+              "route": {
+                "cluster": "us/auth-svc",
+                "timeout": "15s"
+              },
+              "typed_per_filter_config": {
+                "envoy.filters.http.cors": {
+                  "@type": "type.googleapis.com/envoy.extensions.filters.http.cors.v3.CorsPolicy",
+                  "allow_headers": "authorization,content-type",
+                  "allow_methods": "GET,POST,PUT,DELETE",
+                  "allow_origin_string_match": [
+                    {
+                      "safe_regex": {
+                        "regex": "^https://.*\\.example\\.com$"
+                      }
+                    }
+                  ],
+                  "max_age": "86400"
+                },
+                "envoy.filters.http.jwt_authn": {
+                  "@type": "type.googleapis.com/envoy.extensions.filters.http.jwt_authn.v3.PerRouteConfig",
+                  "requirement_name": "allow-missing"
+                },
+                "envoy.filters.http.local_ratelimit": {
+                  "@type": "type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit",
+                  "stat_prefix": "local_ratelimit",
+                  "token_bucket": {
+                    "fill_interval": "60s",
+                    "max_tokens": 10,
+                    "tokens_per_fill": 10
+                  }
+                }
+              }
+            },
+            {
+              "match": {
+                "prefix": "/users/"
+              },
+              "route": {
+                "prefix_rewrite": "/",
+                "retry_policy": {
+                  "num_retries": 2,
+                  "per_try_timeout": "2s",
+                  "retry_on": "5xx,connect-failure"
+                },
+                "timeout": "10s",
+                "weighted_clusters": {
+                  "clusters": [
+                    {
+                      "name": "us/user-svc",
+                      "weight": 90
+                    },
+                    {
+                      "name": "us/user-svc-canary",
+                      "weight": 10
+                    }
+                  ]
+                }
+              },
+              "typed_per_filter_config": {
+                "envoy.filters.http.cors": {
+                  "@type": "type.googleapis.com/envoy.extensions.filters.http.cors.v3.CorsPolicy",
+                  "allow_headers": "authorization,content-type",
+                  "allow_methods": "GET,POST,PUT,DELETE",
+                  "allow_origin_string_match": [
+                    {
+                      "safe_regex": {
+                        "regex": "^https://.*\\.example\\.com$"
+                      }
+                    }
+                  ],
+                  "max_age": "86400"
+                },
+                "envoy.filters.http.jwt_authn": {
+                  "@type": "type.googleapis.com/envoy.extensions.filters.http.jwt_authn.v3.PerRouteConfig",
+                  "requirement_name": "jwt/18aa7e80:api.example.com"
+                }
+              }
+            },
+            {
+              "match": {
+                "prefix": "/orders/"
+              },
+              "route": {
+                "cluster": "us/order-svc",
+                "prefix_rewrite": "/",
+                "timeout": "30s"
+              },
+              "typed_per_filter_config": {
+                "envoy.filters.http.cors": {
+                  "@type": "type.googleapis.com/envoy.extensions.filters.http.cors.v3.CorsPolicy",
+                  "allow_headers": "authorization,content-type",
+                  "allow_methods": "GET,POST,PUT,DELETE",
+                  "allow_origin_string_match": [
+                    {
+                      "safe_regex": {
+                        "regex": "^https://.*\\.example\\.com$"
+                      }
+                    }
+                  ],
+                  "max_age": "86400"
+                },
+                "envoy.filters.http.jwt_authn": {
+                  "@type": "type.googleapis.com/envoy.extensions.filters.http.jwt_authn.v3.PerRouteConfig",
+                  "requirement_name": "jwt/18aa7e80:api.example.com"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "secrets": {
+    "crt/https/0": {
+      "name": "crt/https/0",
+      "tls_certificate": {
+        "certificate_chain": {
+          "filename": "testdata/certs/api.crt"
+        },
+        "private_key": {
+          "filename": "testdata/certs/api.key"
+        }
+      }
+    }
+  },
+  "version": "d335c58d5a7f"
+}

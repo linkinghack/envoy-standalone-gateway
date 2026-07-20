@@ -1,0 +1,32 @@
+# 错误用例：同一 Listener 下两个 Route 的同精度 hostname 冲突
+# （F2 同 Listener 下 hostname 冲突检测，link 阶段）。
+apiVersion: esgw/v1alpha1
+kind: Listener
+metadata: {name: http}
+spec: {port: 80, protocol: HTTP}
+---
+apiVersion: esgw/v1alpha1
+kind: Route
+metadata: {name: web-a}
+spec:
+  listeners: [http]
+  hostnames: [www.example.com]
+  rules:
+    - match: {path: {prefix: /}}
+      backends: [{upstream: app}]
+---
+apiVersion: esgw/v1alpha1
+kind: Route
+metadata: {name: web-b}
+spec:
+  listeners: [http]
+  hostnames: [www.example.com]
+  rules:
+    - match: {path: {prefix: /}}
+      backends: [{upstream: app}]
+---
+apiVersion: esgw/v1alpha1
+kind: Upstream
+metadata: {name: app}
+spec:
+  endpoints: [{address: 127.0.0.1, port: 9000}]
