@@ -13,17 +13,80 @@ import (
 	"github.com/linkinghack/envoy-standalone-gateway/internal/compile"
 	"github.com/linkinghack/envoy-standalone-gateway/internal/deliver"
 	"github.com/linkinghack/envoy-standalone-gateway/internal/ir"
+	"github.com/linkinghack/envoy-standalone-gateway/internal/state"
 	"github.com/linkinghack/envoy-standalone-gateway/internal/store"
 )
 
 // Publisher coordinates the minimum publish path across M-CONF, M-COMPILE,
 // M-STORE and M-DELIVER.
 type Publisher struct {
-	DataDir string
-	Store   *store.Store
-	Deliver deliver.Deliverer
-	Mode    compile.Mode
-	mu      sync.Mutex
+	DataDir     string
+	Store       *store.Store
+	Deliver     deliver.Deliverer
+	Mode        compile.Mode
+	mu          sync.Mutex
+	state       *state.Service
+	stateCancel func()
+}
+
+// AttachState wires M-STATE confirmation events into the publish state machine.
+// The returned function stops the subscription goroutine.
+func (p *Publisher) AttachState(service *state.Service) func() {
+	if p == nil || service == nil {
+		return func() {}
+	}
+	p.mu.Lock()
+	if p.stateCancel != nil {
+		cancel := p.stateCancel
+		p.mu.Unlock()
+		return cancel
+	}
+	events := make(chan state.VersionConfirmEvent, 8)
+	cancelSub := service.SubscribeConfirm(events)
+	ctx, cancel := context.WithCancel(context.Background())
+	p.state = service
+	p.stateCancel = func() {
+		cancel()
+		cancelSub()
+	}
+	p.mu.Unlock()
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case event := <-events:
+				_ = p.handleConfirmEvent(context.Background(), event)
+			}
+		}
+	}()
+	return p.stateCancel
+}
+
+func (p *Publisher) handleConfirmEvent(ctx context.Context, event state.VersionConfirmEvent) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	runs, err := p.Store.ActivePublishRuns(ctx)
+	if err != nil || len(runs) == 0 {
+		return err
+	}
+	for _, run := range runs {
+		v, getErr := p.Store.GetVersion(ctx, run.VersionSeq)
+		if getErr != nil || v.IRVersion != event.Expected {
+			continue
+		}
+		if event.Status == "CONFIRMED" {
+			return p.confirmLocked(ctx, run, v, event.Observed)
+		}
+		run.State = "TIMEOUT"
+		v.State = "timeout"
+		if err := p.Store.InsertVersion(ctx, v); err != nil {
+			return err
+		}
+		run.UpdatedAt = time.Now().UTC()
+		return p.Store.UpdatePublishRun(ctx, run)
+	}
+	return nil
 }
 
 // PublishResult describes a successfully accepted or failed publish attempt.
@@ -189,6 +252,9 @@ func (p *Publisher) PublishWithBase(ctx context.Context, author, message, baseHa
 	if err := p.Store.UpdatePublishRun(ctx, run); err != nil {
 		return PublishResult{}, err
 	}
+	if p.state != nil {
+		p.state.ExpectVersion(out.Version, 30*time.Second)
+	}
 	return PublishResult{Seq: seq, RunID: run.ID, IRVersion: out.Version, State: "confirming", IR: out}, nil
 }
 
@@ -213,6 +279,10 @@ func (p *Publisher) Confirm(ctx context.Context, runID int64, observedIRVersion 
 	if observedIRVersion != v.IRVersion {
 		return fmt.Errorf("confirm version mismatch: observed %s, want %s", observedIRVersion, v.IRVersion)
 	}
+	return p.confirmLocked(ctx, run, v, observedIRVersion)
+}
+
+func (p *Publisher) confirmLocked(ctx context.Context, run store.PublishRun, v store.Version, observedIRVersion string) error {
 	v.State = "effective"
 	if err := p.Store.InsertVersion(ctx, v); err != nil {
 		return err

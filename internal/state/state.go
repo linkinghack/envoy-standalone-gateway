@@ -48,9 +48,13 @@ type DataPlaneState struct {
 	CollectedAt   time.Time       `json:"collected_at"`
 	Stale         bool            `json:"stale"`
 	LastSuccessAt time.Time       `json:"last_success_at"`
+	Ready         bool            `json:"ready"`
+	ReadyStatus   string          `json:"ready_status,omitempty"`
 	Version       VersionStatus   `json:"version"`
 	Listeners     []ListenerState `json:"listeners,omitempty"`
 	Clusters      []ClusterState  `json:"clusters,omitempty"`
+	Certs         []CertState     `json:"certs,omitempty"`
+	Routes        []RouteState    `json:"routes,omitempty"`
 }
 
 // ListenerState is a normalized listener resource status.
@@ -74,6 +78,31 @@ type EndpointState struct {
 	Health    string   `json:"health"`
 	Weight    uint32   `json:"weight,omitempty"`
 	FailFlags []string `json:"fail_flags,omitempty"`
+}
+
+// CertState is a normalized certificate status record.
+type CertState struct {
+	Name     string     `json:"name"`
+	Owner    *ObjectRef `json:"owner,omitempty"`
+	Subject  string     `json:"subject,omitempty"`
+	SANs     []string   `json:"sans,omitempty"`
+	NotAfter time.Time  `json:"not_after,omitempty"`
+	DaysLeft int        `json:"days_left,omitempty"`
+	Serial   string     `json:"serial,omitempty"`
+}
+
+// RouteState is a normalized route configuration with virtual hosts.
+type RouteState struct {
+	Name         string       `json:"name"`
+	Owner        *ObjectRef   `json:"owner,omitempty"`
+	VirtualHosts []VHostState `json:"virtual_hosts,omitempty"`
+}
+
+// VHostState is a normalized route virtual host.
+type VHostState struct {
+	Name    string     `json:"name"`
+	Domains []string   `json:"domains,omitempty"`
+	Owner   *ObjectRef `json:"owner,omitempty"`
 }
 
 // VersionConfirmEvent is emitted when an expected version confirms or times out.
@@ -107,11 +136,89 @@ type Service struct {
 	nextSub       int
 	confirmCancel context.CancelFunc
 	series        *SeriesStore
+	collectMu     sync.Mutex
+	adminMu       sync.Mutex
+	requestMu     sync.Mutex
+	inflight      map[string]*adminFlight
+	backoffMu     sync.Mutex
+	backoff       map[string]backoffState
+}
+
+type adminFlight struct {
+	done chan struct{}
+	body []byte
+	err  error
+}
+
+type backoffState struct {
+	failures int
+	next     time.Time
+}
+
+func (s *Service) get(ctx context.Context, path string) ([]byte, error) {
+	s.requestMu.Lock()
+	if flight := s.inflight[path]; flight != nil {
+		s.requestMu.Unlock()
+		select {
+		case <-flight.done:
+			return flight.body, flight.err
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	flight := &adminFlight{done: make(chan struct{})}
+	s.inflight[path] = flight
+	s.requestMu.Unlock()
+
+	s.adminMu.Lock()
+	body, err := s.Client.Get(ctx, path)
+	s.adminMu.Unlock()
+
+	s.requestMu.Lock()
+	flight.body, flight.err = body, err
+	delete(s.inflight, path)
+	close(flight.done)
+	s.requestMu.Unlock()
+	return body, err
+}
+
+// PollConfig controls the periodic state collector.
+type PollConfig struct {
+	ReadyInterval    time.Duration
+	StatsInterval    time.Duration
+	ClustersInterval time.Duration
+	ConfigInterval   time.Duration
+	CertsInterval    time.Duration
+}
+
+func (c PollConfig) withDefaults() PollConfig {
+	if c.ReadyInterval <= 0 {
+		c.ReadyInterval = 10 * time.Second
+	}
+	if c.StatsInterval <= 0 {
+		c.StatsInterval = 10 * time.Second
+	}
+	if c.ClustersInterval <= 0 {
+		c.ClustersInterval = 15 * time.Second
+	}
+	if c.ConfigInterval <= 0 {
+		c.ConfigInterval = 60 * time.Second
+	}
+	if c.CertsInterval <= 0 {
+		c.CertsInterval = 5 * time.Minute
+	}
+	return c
 }
 
 // New constructs an M-STATE service.
 func New(nodeID string, client AdminClient) *Service {
-	return &Service{NodeID: nodeID, Client: client, timeout: 30 * time.Second, confirmCh: map[int]chan<- VersionConfirmEvent{}, series: NewSeriesStore(2160, 5000, 10*time.Second)}
+	return &Service{
+		NodeID: nodeID, Client: client, timeout: 30 * time.Second,
+		confirmCh: map[int]chan<- VersionConfirmEvent{},
+		series:    NewSeriesStore(2160, 5000, 10*time.Second),
+		inflight:  map[string]*adminFlight{},
+		backoff:   map[string]backoffState{},
+	}
 }
 
 // CurrentState returns the cached state, optionally refreshing from Envoy.
@@ -170,6 +277,14 @@ func (s *Service) PrometheusProxy() http.Handler {
 	})
 }
 
+// Start starts serialized periodic collection. The returned function stops it.
+func (s *Service) Start(ctx context.Context, config PollConfig) func() {
+	config = config.withDefaults()
+	runCtx, cancel := context.WithCancel(ctx)
+	go s.pollLoop(runCtx, config)
+	return cancel
+}
+
 // ExpectVersion registers a version to confirm through config_dump polling.
 func (s *Service) ExpectVersion(version string, timeout time.Duration) {
 	s.mu.Lock()
@@ -206,7 +321,13 @@ func (s *Service) SubscribeConfirm(ch chan<- VersionConfirmEvent) func() {
 }
 
 func (s *Service) refresh(ctx context.Context) error {
-	serverBody, err := s.Client.Get(ctx, "/server_info")
+	s.collectMu.Lock()
+	defer s.collectMu.Unlock()
+	return s.refreshLocked(ctx, true)
+}
+
+func (s *Service) refreshLocked(ctx context.Context, includeClusters bool) error {
+	serverBody, err := s.get(ctx, "/server_info")
 	if err != nil {
 		return err
 	}
@@ -219,12 +340,16 @@ func (s *Service) refresh(ctx context.Context) error {
 	if err := json.Unmarshal(serverBody, &server); err != nil {
 		return err
 	}
-	dumpBody, err := s.Client.Get(ctx, "/config_dump?include_eds")
+	dumpBody, err := s.get(ctx, "/config_dump?include_eds")
 	if err != nil {
 		return err
 	}
 	observed, resources := configDumpVersions(dumpBody)
-	clusterBody, clusterErr := s.Client.Get(ctx, "/clusters?format=json")
+	var clusterBody []byte
+	var clusterErr error
+	if includeClusters {
+		clusterBody, clusterErr = s.get(ctx, "/clusters?format=json")
+	}
 	now := time.Now()
 	s.mu.Lock()
 	s.current.NodeID = s.NodeID
@@ -252,11 +377,153 @@ func (s *Service) refresh(ctx context.Context) error {
 		}
 	}
 	s.current.Listeners = parseListeners(dumpBody)
+	s.current.Routes = parseRoutes(dumpBody)
 	if clusterErr == nil {
 		s.current.Clusters = parseClusters(clusterBody)
 	}
+	if certsBody, certErr := s.get(ctx, "/certs"); certErr == nil {
+		s.current.Certs = parseCerts(certsBody)
+	}
 	s.mu.Unlock()
 	return nil
+}
+
+func (s *Service) pollLoop(ctx context.Context, config PollConfig) {
+	readyInterval := time.Second
+	ready := time.NewTicker(readyInterval)
+	stats := time.NewTicker(config.StatsInterval)
+	clusters := time.NewTicker(config.ClustersInterval)
+	dump := time.NewTicker(config.ConfigInterval)
+	certs := time.NewTicker(config.CertsInterval)
+	defer ready.Stop()
+	defer stats.Stop()
+	defer clusters.Stop()
+	defer dump.Stop()
+	defer certs.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ready.C:
+			s.collectReady(ctx)
+			s.mu.Lock()
+			isReady := s.current.Ready
+			s.mu.Unlock()
+			if isReady && readyInterval != config.ReadyInterval {
+				ready.Stop()
+				readyInterval = config.ReadyInterval
+				ready = time.NewTicker(readyInterval)
+			}
+		case <-stats.C:
+			s.collectStats(ctx)
+		case <-clusters.C:
+			s.collectClusters(ctx)
+		case <-dump.C:
+			_, _ = s.CurrentState(ctx, true)
+		case <-certs.C:
+			s.collectCerts(ctx)
+		}
+	}
+}
+
+func (s *Service) collectReady(ctx context.Context) {
+	s.collectMu.Lock()
+	defer s.collectMu.Unlock()
+	const path = "/ready"
+	if !s.backoffAllowed(path) {
+		return
+	}
+	body, err := s.get(ctx, path)
+	s.recordBackoff(path, err)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err != nil {
+		s.current.Ready = false
+		s.current.ReadyStatus = "UNAVAILABLE"
+		return
+	}
+	status := strings.TrimSpace(string(body))
+	s.current.ReadyStatus = status
+	s.current.Ready = strings.EqualFold(status, "LIVE") || strings.EqualFold(status, "OK")
+}
+
+func (s *Service) collectStats(ctx context.Context) {
+	s.collectMu.Lock()
+	defer s.collectMu.Unlock()
+	const path = "/stats?format=json"
+	if !s.backoffAllowed(path) {
+		return
+	}
+	body, err := s.get(ctx, path)
+	s.recordBackoff(path, err)
+	if err != nil {
+		return
+	}
+	now := time.Now()
+	for _, sample := range parseStats(body) {
+		_ = s.series.Add(sample.Key, sample.Value, now)
+	}
+}
+
+func (s *Service) collectClusters(ctx context.Context) {
+	s.collectMu.Lock()
+	defer s.collectMu.Unlock()
+	const path = "/clusters?format=json"
+	if !s.backoffAllowed(path) {
+		return
+	}
+	body, err := s.get(ctx, path)
+	s.recordBackoff(path, err)
+	if err != nil {
+		return
+	}
+	s.mu.Lock()
+	s.current.Clusters = parseClusters(body)
+	s.mu.Unlock()
+}
+
+func (s *Service) collectCerts(ctx context.Context) {
+	s.collectMu.Lock()
+	defer s.collectMu.Unlock()
+	const path = "/certs"
+	if !s.backoffAllowed(path) {
+		return
+	}
+	body, err := s.get(ctx, path)
+	s.recordBackoff(path, err)
+	if err != nil {
+		return
+	}
+	s.mu.Lock()
+	s.current.Certs = parseCerts(body)
+	s.mu.Unlock()
+}
+
+func (s *Service) backoffAllowed(path string) bool {
+	s.backoffMu.Lock()
+	defer s.backoffMu.Unlock()
+	state := s.backoff[path]
+	return state.next.IsZero() || !time.Now().Before(state.next)
+}
+
+func (s *Service) recordBackoff(path string, err error) {
+	s.backoffMu.Lock()
+	defer s.backoffMu.Unlock()
+	if err == nil {
+		delete(s.backoff, path)
+		return
+	}
+	state := s.backoff[path]
+	state.failures++
+	delay := time.Second
+	for i := 1; i < state.failures && delay < time.Minute; i++ {
+		delay *= 2
+	}
+	if delay > time.Minute {
+		delay = time.Minute
+	}
+	state.next = time.Now().Add(delay)
+	s.backoff[path] = state
 }
 
 func (s *Service) confirmLoop(ctx context.Context) {
@@ -287,25 +554,38 @@ func configDumpVersions(body []byte) (string, []ResourceVersion) {
 		return "", nil
 	}
 	var resources []ResourceVersion
-	var walk func(any)
-	walk = func(v any) {
+	var walk func(any, string)
+	walk = func(v any, contextType string) {
 		switch x := v.(type) {
 		case map[string]any:
+			typeName := contextType
+			if raw, ok := x["@type"].(string); ok {
+				typeName = raw
+			}
 			for k, value := range x {
 				if k == "version_info" {
 					if version, ok := value.(string); ok {
-						resources = append(resources, ResourceVersion{Type: "", Version: version})
+						resources = append(resources, ResourceVersion{Type: typeName, Version: version})
 					}
 				}
-				walk(value)
+				walk(value, typeName+"/"+k)
 			}
 		case []any:
 			for _, item := range x {
-				walk(item)
+				walk(item, contextType)
 			}
 		}
 	}
-	walk(dump)
+	walk(dump, "")
+	filtered := resources[:0]
+	for _, item := range resources {
+		lower := strings.ToLower(item.Type)
+		if strings.Contains(lower, "endpoint") || strings.Contains(lower, "eds") {
+			continue
+		}
+		filtered = append(filtered, item)
+	}
+	resources = filtered
 	versions := map[string]bool{}
 	for _, item := range resources {
 		if item.Version != "" {
@@ -344,6 +624,52 @@ func parseListeners(body []byte) []ListenerState {
 					item.Address = addressString(address)
 				}
 				out = append(out, item)
+			}
+			for _, value := range x {
+				walk(value)
+			}
+		case []any:
+			for _, item := range x {
+				walk(item)
+			}
+		}
+	}
+	walk(dump)
+	return out
+}
+
+func parseRoutes(body []byte) []RouteState {
+	var dump map[string]any
+	if json.Unmarshal(body, &dump) != nil {
+		return nil
+	}
+	var out []RouteState
+	var walk func(any)
+	walk = func(v any) {
+		switch x := v.(type) {
+		case map[string]any:
+			name, _ := x["name"].(string)
+			if strings.HasPrefix(name, "rc/") {
+				route := RouteState{Name: name, Owner: resolveOwner(name)}
+				if virtualHosts, ok := x["virtual_hosts"].([]any); ok {
+					for _, raw := range virtualHosts {
+						host, ok := raw.(map[string]any)
+						if !ok {
+							continue
+						}
+						vhostName, _ := host["name"].(string)
+						vhost := VHostState{Name: vhostName, Owner: resolveOwner(vhostName)}
+						if domains, ok := host["domains"].([]any); ok {
+							for _, domain := range domains {
+								if value, ok := domain.(string); ok {
+									vhost.Domains = append(vhost.Domains, value)
+								}
+							}
+						}
+						route.VirtualHosts = append(route.VirtualHosts, vhost)
+					}
+				}
+				out = append(out, route)
 			}
 			for _, value := range x {
 				walk(value)
@@ -442,6 +768,104 @@ func parseUptime(value string) time.Duration {
 		return seconds
 	}
 	return 0
+}
+
+type statSample struct {
+	Key   SeriesKey
+	Value int64
+}
+
+func parseStats(body []byte) []statSample {
+	var doc struct {
+		Stats []struct {
+			Name  string          `json:"name"`
+			Value json.RawMessage `json:"value"`
+		} `json:"stats"`
+		Histograms []struct {
+			Name               string `json:"name"`
+			SupportedQuantiles []struct {
+				Quantile float64 `json:"quantile"`
+				Value    int64   `json:"value"`
+			} `json:"supported_quantiles"`
+		} `json:"histograms"`
+	}
+	if json.Unmarshal(body, &doc) != nil {
+		return nil
+	}
+	out := make([]statSample, 0, len(doc.Stats))
+	for _, item := range doc.Stats {
+		var value int64
+		if json.Unmarshal(item.Value, &value) != nil {
+			var text string
+			if json.Unmarshal(item.Value, &text) != nil {
+				continue
+			}
+			if _, err := fmt.Sscan(text, &value); err != nil {
+				continue
+			}
+		}
+		dim, name, metric := statIdentity(item.Name)
+		out = append(out, statSample{Key: SeriesKey{Dim: dim, Name: name, Metric: metric}, Value: value})
+	}
+	for _, histogram := range doc.Histograms {
+		dim, name, metric := statIdentity(histogram.Name)
+		for _, quantile := range histogram.SupportedQuantiles {
+			suffix := fmt.Sprintf("p%d", int(quantile.Quantile*100))
+			out = append(out, statSample{
+				Key:   SeriesKey{Dim: dim, Name: name, Metric: metric + "." + suffix},
+				Value: quantile.Value,
+			})
+		}
+	}
+	return out
+}
+
+func statIdentity(name string) (string, string, string) {
+	parts := strings.Split(name, ".")
+	if len(parts) >= 3 && parts[0] == "cluster" {
+		return "upstream", parts[1], strings.Join(parts[2:], ".")
+	}
+	if len(parts) >= 3 && parts[0] == "http" {
+		return "listener", parts[1], strings.Join(parts[2:], ".")
+	}
+	if len(parts) >= 3 && parts[0] == "listener" {
+		return "listener", parts[1], strings.Join(parts[2:], ".")
+	}
+	return "global", "", name
+}
+
+func parseCerts(body []byte) []CertState {
+	var doc struct {
+		Certificates []struct {
+			Name          string   `json:"name"`
+			CertChainFile string   `json:"cert_chain_file"`
+			Subject       string   `json:"subject"`
+			Serial        string   `json:"serial_number"`
+			SANs          []string `json:"subject_alt_names"`
+			NotAfter      string   `json:"expiration_time"`
+			DaysLeft      float64  `json:"days_until_expiration"`
+		} `json:"certificates"`
+	}
+	if json.Unmarshal(body, &doc) != nil {
+		return nil
+	}
+	out := make([]CertState, 0, len(doc.Certificates))
+	for _, item := range doc.Certificates {
+		name := item.Name
+		if name == "" {
+			name = item.CertChainFile
+		}
+		var notAfter time.Time
+		if item.NotAfter != "" {
+			notAfter, _ = time.Parse(time.RFC3339, item.NotAfter)
+		}
+		days := int(item.DaysLeft)
+		if days == 0 && !notAfter.IsZero() {
+			days = int(time.Until(notAfter).Hours() / 24)
+		}
+		out = append(out, CertState{Name: name, Owner: resolveOwner(name), Subject: item.Subject, SANs: item.SANs, NotAfter: notAfter, DaysLeft: days, Serial: item.Serial})
+	}
+	return out
 }
 
 func resolveOwner(name string) *ObjectRef {

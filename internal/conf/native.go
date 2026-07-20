@@ -12,6 +12,7 @@ import (
 	endpointv3 "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
 	listenerv3 "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
 	routev3 "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
+	hcmv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
 	tlsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
 	"github.com/linkinghack/envoy-standalone-gateway/internal/compile"
 	"github.com/linkinghack/envoy-standalone-gateway/internal/ir"
@@ -62,12 +63,32 @@ func ParseNative(content []byte) (*ir.IR, error) {
 				return nil, errors.New("native cluster has empty name")
 			}
 			out.Clusters[resource.GetName()] = proto.Clone(resource).(*clusterv3.Cluster)
+			if assignment := resource.GetLoadAssignment(); assignment != nil {
+				out.Endpoints[resource.GetName()] = proto.Clone(assignment).(*endpointv3.ClusterLoadAssignment)
+			}
 		}
 		for _, resource := range sr.GetSecrets() {
 			if resource.GetName() == "" {
 				return nil, errors.New("native secret has empty name")
 			}
 			out.Secrets[resource.GetName()] = proto.Clone(resource).(*tlsv3.Secret)
+		}
+		for _, listener := range sr.GetListeners() {
+			for _, chain := range listener.GetFilterChains() {
+				for _, filter := range chain.GetFilters() {
+					typed := filter.GetTypedConfig()
+					if typed == nil || typed.GetTypeUrl() == "" {
+						continue
+					}
+					hcm := new(hcmv3.HttpConnectionManager)
+					if err := typed.UnmarshalTo(hcm); err != nil {
+						continue
+					}
+					if route := hcm.GetRouteConfig(); route != nil && route.GetName() != "" {
+						out.Routes[route.GetName()] = proto.Clone(route).(*routev3.RouteConfiguration)
+					}
+				}
+			}
 		}
 	}
 	if err := validateNative(&bootstrap); err != nil {

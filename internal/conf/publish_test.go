@@ -3,14 +3,18 @@ package conf
 import (
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
+	"time"
 
 	endpointv3 "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
 	"github.com/linkinghack/envoy-standalone-gateway/internal/compile"
 	"github.com/linkinghack/envoy-standalone-gateway/internal/deliver"
 	"github.com/linkinghack/envoy-standalone-gateway/internal/ir"
+	"github.com/linkinghack/envoy-standalone-gateway/internal/state"
 	"github.com/linkinghack/envoy-standalone-gateway/internal/store"
 )
 
@@ -98,6 +102,66 @@ func TestPublisherPublishWithBaseAndConfirm(t *testing.T) {
 	if err != nil || run.State != "EFFECTIVE" {
 		t.Fatalf("run=%+v err=%v", run, err)
 	}
+}
+
+func TestPublisherAutoConfirmsFromStateEvent(t *testing.T) {
+	data := t.TempDir()
+	if err := writeMinimalDraft(data); err != nil {
+		t.Fatal(err)
+	}
+	st, err := store.Open(filepath.Join(data, "esgw.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = st.Close() }()
+	responses := map[string][]byte{
+		"/server_info":             []byte(`{"version":"1.30","state":"LIVE"}`),
+		"/config_dump?include_eds": []byte(`{"configs":[{"version_info":"old"}]}`),
+		"/clusters?format=json":    []byte(`{"cluster_statuses":[]}`),
+		"/certs":                   []byte(`{"certificates":[]}`),
+	}
+	admin := &fakeStateAdmin{responses: responses}
+	stateService := state.New("node-1", admin)
+	pub := &Publisher{DataDir: data, Store: st, Deliver: &fakeDeliver{}, Mode: compile.ModeXDS}
+	stop := pub.AttachState(stateService)
+	defer stop()
+	res, err := pub.PublishWithBase(context.Background(), "test", "auto-confirm", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin.set("/config_dump?include_eds", []byte(`{"configs":[{"version_info":"`+res.IRVersion+`"}]}`))
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		run, getErr := st.GetPublishRun(context.Background(), res.RunID)
+		if getErr == nil && run.State == "EFFECTIVE" {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	run, _ := st.GetPublishRun(context.Background(), res.RunID)
+	t.Fatalf("run did not auto-confirm: %+v", run)
+}
+
+type fakeStateAdmin struct {
+	mu        sync.RWMutex
+	responses map[string][]byte
+}
+
+func (f *fakeStateAdmin) Get(_ context.Context, path string) ([]byte, error) {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	return f.responses[path], nil
+}
+
+func (f *fakeStateAdmin) Prometheus(_ context.Context, w io.Writer) error {
+	_, err := io.WriteString(w, "")
+	return err
+}
+
+func (f *fakeStateAdmin) set(path string, body []byte) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.responses[path] = body
 }
 
 func TestPublisherBaseHashConflict(t *testing.T) {

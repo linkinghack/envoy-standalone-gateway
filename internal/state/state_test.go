@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -24,6 +25,70 @@ func (f fakeAdmin) Prometheus(_ context.Context, w io.Writer) error {
 	_, err := io.WriteString(w, "envoy_requests_total 1\n")
 	return err
 }
+
+func TestServiceSerializesAdminRequests(t *testing.T) {
+	admin := &serialAdmin{}
+	service := New("node-1", admin)
+	ctx := context.Background()
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, _ = service.CurrentState(ctx, true)
+		}()
+	}
+	wg.Wait()
+	if admin.maxInFlight > 1 {
+		t.Fatalf("admin requests overlapped: max=%d", admin.maxInFlight)
+	}
+}
+
+func TestServiceFailureBackoff(t *testing.T) {
+	admin := &countingFailAdmin{}
+	service := New("node-1", admin)
+	service.collectStats(context.Background())
+	service.collectStats(context.Background())
+	if got := admin.calls; got != 1 {
+		t.Fatalf("backoff did not suppress retry: calls=%d", got)
+	}
+}
+
+type countingFailAdmin struct {
+	mu    sync.Mutex
+	calls int
+}
+
+func (a *countingFailAdmin) Get(context.Context, string) ([]byte, error) {
+	a.mu.Lock()
+	a.calls++
+	a.mu.Unlock()
+	return nil, io.ErrUnexpectedEOF
+}
+
+func (a *countingFailAdmin) Prometheus(context.Context, io.Writer) error { return nil }
+
+type serialAdmin struct {
+	mu          sync.Mutex
+	inFlight    int
+	maxInFlight int
+}
+
+func (a *serialAdmin) Get(context.Context, string) ([]byte, error) {
+	a.mu.Lock()
+	a.inFlight++
+	if a.inFlight > a.maxInFlight {
+		a.maxInFlight = a.inFlight
+	}
+	a.mu.Unlock()
+	time.Sleep(time.Millisecond)
+	a.mu.Lock()
+	a.inFlight--
+	a.mu.Unlock()
+	return []byte(`{}`), nil
+}
+
+func (a *serialAdmin) Prometheus(context.Context, io.Writer) error { return nil }
 
 func TestHTTPClientRejectsWritePaths(t *testing.T) {
 	client := &HTTPClient{Address: "127.0.0.1:9901"}
@@ -92,10 +157,20 @@ func TestConfigDumpVersionMismatch(t *testing.T) {
 	}
 }
 
+func TestConfigDumpVersionsIgnoresEDSForConfirmation(t *testing.T) {
+	got, resources := configDumpVersions([]byte(`{"configs":[
+		{"@type":"type.googleapis.com/envoy.admin.v3.ClustersConfigDump","version_info":"v1"},
+		{"@type":"type.googleapis.com/envoy.admin.v3.EndpointsConfigDump","version_info":"v1#eds-2"}
+	]}`))
+	if got != "v1" || len(resources) != 1 || resources[0].Version != "v1" {
+		t.Fatalf("got=%q resources=%+v", got, resources)
+	}
+}
+
 func TestServiceParsesListenersAndClusters(t *testing.T) {
 	service := New("node-1", fakeAdmin{responses: map[string][]byte{
 		"/server_info":             []byte(`{"version":"1.30","state":"LIVE","uptime_current_epoch":"12","hot_restart_epoch":2}`),
-		"/config_dump?include_eds": []byte(`{"configs":[{"name":"lis/web","address":{"socket_address":{"address":"0.0.0.0","port_value":443}}}]}`),
+		"/config_dump?include_eds": []byte(`{"configs":[{"name":"lis/web","address":{"socket_address":{"address":"0.0.0.0","port_value":443}}},{"name":"rc/web","virtual_hosts":[{"name":"vh/api","domains":["example.test"]}]}]}`),
 		"/clusters?format=json":    []byte(`{"cluster_statuses":[{"name":"us/api","host_statuses":[{"address":{"socket_address":{"address":"10.0.0.7","port_value":8080}},"health_status":"healthy","weight":3},{"address":{"socket_address":{"address":"10.0.0.8","port_value":8080}},"health_status":"failed_active_health_check"}]}]}`),
 	}})
 	state, err := service.CurrentState(context.Background(), true)
@@ -104,6 +179,9 @@ func TestServiceParsesListenersAndClusters(t *testing.T) {
 	}
 	if len(state.Listeners) != 1 || state.Listeners[0].Address != "0.0.0.0:443" {
 		t.Fatalf("listeners=%+v", state.Listeners)
+	}
+	if len(state.Routes) != 1 || len(state.Routes[0].VirtualHosts) != 1 {
+		t.Fatalf("routes=%+v", state.Routes)
 	}
 	if got := state.Listeners[0].Owner; got == nil || got.Kind != "Listener" || got.Name != "web" {
 		t.Fatalf("listener owner=%+v", got)
@@ -116,6 +194,51 @@ func TestServiceParsesListenersAndClusters(t *testing.T) {
 	}
 	if got := state.Clusters[0].Endpoints[1]; got.Health != "UNHEALTHY" {
 		t.Fatalf("failed endpoint=%+v", got)
+	}
+}
+
+func TestServiceCollectsReadyStatsAndCerts(t *testing.T) {
+	service := New("node-1", fakeAdmin{responses: map[string][]byte{
+		"/ready":                   []byte("LIVE\n"),
+		"/stats?format=json":       []byte(`{"stats":[{"name":"cluster.us/api.upstream_rq_total","value":12},{"name":"http.lis/web.downstream_rq_2xx","value":"7"}]}`),
+		"/certs":                   []byte(`{"certificates":[{"name":"crt/web/0","subject":"CN=example.test","serial_number":"42","subject_alt_names":["example.test"],"expiration_time":"2099-01-01T00:00:00Z"}]}`),
+		"/server_info":             []byte(`{"version":"1.30","state":"LIVE"}`),
+		"/config_dump?include_eds": []byte(`{"configs":[]}`),
+		"/clusters?format=json":    []byte(`{"cluster_statuses":[]}`),
+	}})
+	stop := service.Start(context.Background(), PollConfig{
+		ReadyInterval: 1 * time.Millisecond, StatsInterval: 1 * time.Millisecond,
+		ClustersInterval: time.Hour, ConfigInterval: time.Hour, CertsInterval: 1 * time.Millisecond,
+	})
+	defer stop()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		state, _ := service.CurrentState(context.Background(), false)
+		series, _ := service.Series(context.Background(), SeriesQuery{})
+		if state.Ready && len(state.Certs) == 1 && len(series) == 2 {
+			if state.Certs[0].Owner == nil || state.Certs[0].Owner.Name != "web" {
+				t.Fatalf("cert owner=%+v", state.Certs[0].Owner)
+			}
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	state, _ := service.CurrentState(context.Background(), false)
+	series, _ := service.Series(context.Background(), SeriesQuery{})
+	t.Fatalf("collector did not converge: state=%+v series=%+v", state, series)
+}
+
+func TestParseStatsAndCerts(t *testing.T) {
+	samples := parseStats([]byte(`{"stats":[{"name":"listener.0.0.0.0_443.downstream_cx_active","value":3},{"name":"foo","value":false}],"histograms":[{"name":"cluster.us/api.upstream_rq_time","supported_quantiles":[{"quantile":0.5,"value":12},{"quantile":0.99,"value":99}]}]}`))
+	if len(samples) != 3 || samples[0].Key.Dim != "listener" || samples[0].Value != 3 {
+		t.Fatalf("samples=%+v", samples)
+	}
+	if samples[1].Key.Metric != "upstream_rq_time.p50" || samples[2].Key.Metric != "upstream_rq_time.p99" {
+		t.Fatalf("histogram samples=%+v", samples)
+	}
+	certs := parseCerts([]byte(`{"certificates":[{"name":"crt/web/0","expiration_time":"2099-01-01T00:00:00Z","days_until_expiration":12}]}`))
+	if len(certs) != 1 || certs[0].DaysLeft != 12 || certs[0].Owner.Name != "web" {
+		t.Fatalf("certs=%+v", certs)
 	}
 }
 

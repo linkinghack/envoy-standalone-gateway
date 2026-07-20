@@ -331,6 +331,45 @@ func (s *Store) GetPublishRun(ctx context.Context, id int64) (PublishRun, error)
 	return r, nil
 }
 
+// ActivePublishRuns returns all non-terminal publish runs.
+func (s *Store) ActivePublishRuns(ctx context.Context) ([]PublishRun, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id,version_seq,trigger_by,state,base_hash,
+		errors_json,diff_json,created_at,updated_at FROM publish_runs
+		WHERE state IN ('VALIDATING','VALIDATED','PUBLISHING','CONFIRMING')
+		ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []PublishRun
+	for rows.Next() {
+		var r PublishRun
+		var version sql.NullInt64
+		var created, updated string
+		if err := rows.Scan(&r.ID, &version, &r.TriggerBy, &r.State, &r.BaseHash,
+			&r.ErrorsJSON, &r.DiffJSON, &created, &updated); err != nil {
+			return nil, err
+		}
+		if version.Valid {
+			r.VersionSeq = version.Int64
+		}
+		var parseErr error
+		r.CreatedAt, parseErr = time.Parse(time.RFC3339Nano, created)
+		if parseErr != nil {
+			return nil, parseErr
+		}
+		r.UpdatedAt, parseErr = time.Parse(time.RFC3339Nano, updated)
+		if parseErr != nil {
+			return nil, parseErr
+		}
+		out = append(out, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func nullSeq(seq int64) any {
 	if seq == 0 {
 		return nil

@@ -32,6 +32,13 @@ type SeriesStore struct {
 	series   map[SeriesKey]*Series
 }
 
+// Len returns the number of tracked metric series.
+func (s *SeriesStore) Len() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.series)
+}
+
 // NewSeriesStore creates a bounded ring-buffer store.
 func NewSeriesStore(capacity, max int, interval time.Duration) *SeriesStore {
 	if capacity <= 0 {

@@ -30,6 +30,16 @@ func TestDurationJSON(t *testing.T) {
 	}
 }
 
+func TestParseDuration(t *testing.T) {
+	got, err := ParseDuration("250ms")
+	if err != nil || got.Duration != 250*time.Millisecond {
+		t.Fatalf("got=%v err=%v", got, err)
+	}
+	if _, err := ParseDuration("later"); err == nil {
+		t.Fatal("expected invalid duration error")
+	}
+}
+
 func TestDurationYAMLPath(t *testing.T) {
 	cs := expectLoadOK(t, `
 apiVersion: esgw/v1alpha1

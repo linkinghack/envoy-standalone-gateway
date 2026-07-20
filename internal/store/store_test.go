@@ -106,4 +106,8 @@ func TestPublishRunLifecycle(t *testing.T) {
 	if err != nil || got.State != "EFFECTIVE" || got.VersionSeq != 3 {
 		t.Fatalf("updated run=%+v err=%v", got, err)
 	}
+	active, err := s.ActivePublishRuns(ctx)
+	if err != nil || len(active) != 0 {
+		t.Fatalf("active=%+v err=%v", active, err)
+	}
 }

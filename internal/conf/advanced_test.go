@@ -73,15 +73,55 @@ func TestDraftWatcher(t *testing.T) {
 }
 
 func TestParseNativeStrict(t *testing.T) {
-	ir, err := ParseNative([]byte("static_resources:\n  clusters:\n  - name: foo\n    type: STATIC\n"))
+	ir, err := ParseNative([]byte(`static_resources:
+  clusters:
+  - name: foo
+    type: STATIC
+    load_assignment:
+      cluster_name: foo
+      endpoints:
+      - lb_endpoints:
+        - endpoint:
+            address:
+              socket_address:
+                address: 127.0.0.1
+                port_value: 8080
+`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ir.Version == "" || ir.Clusters["foo"] == nil {
+	if ir.Version == "" || ir.Clusters["foo"] == nil || ir.Endpoints["foo"] == nil {
 		t.Fatalf("native IR=%+v", ir)
 	}
 	if _, err := ParseNative([]byte("static_resources: {}\nunknown_field: true\n")); err == nil {
 		t.Fatal("expected strict unknown-field error")
+	}
+}
+
+func TestRollbackSourceRequiresForceForExistingDraft(t *testing.T) {
+	data := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(data, "config.d"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(data, "config.d", "a.yaml")
+	if err := os.WriteFile(path, []byte("one\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Snapshot(data, 1, SnapshotMeta{Seq: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("two\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := RollbackSource(data, 1, false); err == nil {
+		t.Fatal("expected force guard")
+	}
+	if err := RollbackSource(data, 1, true); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil || string(got) != "one\n" {
+		t.Fatalf("got=%q err=%v", got, err)
 	}
 }
 

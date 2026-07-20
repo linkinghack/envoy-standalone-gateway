@@ -37,6 +37,9 @@ func RollbackSource(dataDir string, seq int64, force bool) error {
 	if err := os.RemoveAll(filepath.Join(dataDir, "config.d")); err != nil {
 		return err
 	}
+	if err := os.MkdirAll(filepath.Join(dataDir, "config.d"), 0o700); err != nil {
+		return err
+	}
 	if err := os.Remove(filepath.Join(dataDir, "native.yaml")); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
