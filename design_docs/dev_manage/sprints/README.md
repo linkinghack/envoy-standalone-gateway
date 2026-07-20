@@ -15,4 +15,4 @@
 | Sprint | 周期 | 目标 | 状态 |
 | --- | --- | --- | --- |
 | [260719](260719/) | 2026-07-19 ~ 2026-07-20 | M0：协议 Go 类型 + 编译器 F1~F6 + static 渲染 + `esgw compile` CLI + golden/e2e 测试设施 | 已完成（待验收）——A1~A8 本地核验全达成，远端 CI 绿待推送确认 |
-| [260720](260720/) | 2026-07-20 ~ | S2 / M1：xDS 下发与运行时骨架（M-CORE + esgw.yaml + deliver/xds + ADS server + 接入 bootstrap + ADS e2e，闭环 M0 验收第 3 项） | 进行中 |
+| [260720](260720/) | 2026-07-20 | S2 / M1：xDS 下发与运行时骨架（M-CORE + esgw.yaml + deliver/xds + ADS server + 接入 bootstrap + ADS e2e，闭环 M0 验收第 3 项） | 已完成（待验收）——A1~A8 本地核验全达成、M0 第 ③ 项闭环，远端 CI 绿待推送确认 |

@@ -23,3 +23,6 @@ chdir），`esgw compile -f testdata/s1/input` 同样从仓库根执行——产
 - `make e2e`：sed 把 `testdata/certs/` 替换为容器内 `/etc/esgw/certs/`、
   把两个 127.0.0.1 端点替换为 compose 服务名后，由真实 Envoy 加载跑流量断言
   （见 `e2e/`）。
+- `make e2e-xds`：input 目录**零改写**直接由 esgw serve（xds 模式）加载，
+  经 ADS 下发给共享网络命名空间的真实 Envoy（127.0.0.1 端点与相对证书
+  路径在共享 netns 内原样成立，见 `e2e/xds/`）。

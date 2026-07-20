@@ -16,6 +16,9 @@
 make e2e        # 或 e2e/run.sh
 ```
 
+ADS 模式（esgw serve + 接入 bootstrap）的对应 e2e 见 [`xds/`](xds/)
+（`make e2e-xds`，Sprint 260720 T5）。
+
 默认 `go test ./...` 不触发（工程基线 §3：e2e 依赖 docker）。
 
 ## 关键决策

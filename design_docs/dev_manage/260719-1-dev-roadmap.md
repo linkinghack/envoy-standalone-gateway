@@ -28,7 +28,7 @@ architecture §8 计划的全部 7 份模块详细设计已完成并交叉互认
 | Sprint | 里程碑 | 主题 | 范围概要 | 主要设计依据 | 前置 |
 |---|---|---|---|---|---|
 | **S1 (260719)** | M0 | 协议与编译器 | `internal/protocol` 五对象类型/strict decode/JSON Schema；`internal/compile` F1~F6 流水线 + escape hatch；static 渲染；`esgw compile` CLI；golden file 测试 + envoy validate + S1 真实流量 e2e | [协议 v0](../system_design/260716-1-gateway-config-protocol-v0.md)、[编译层](../system_design/260716-2-compile-ir-design.md) | — ✅ 已完成（2026-07-20，A1~A8 核验见 [sprints/260719](sprints/260719/plan_todos_trace.md)） |
-| S2 | M1 | xDS 下发与运行时骨架 | M-CORE 装配/生命周期（**补轻量设计文档 + esgw.yaml schema**）；`deliver/xds`（ADS server、FromIR、ACK/NACK）；接入 bootstrap 生成与 `esgw bootstrap` 命令；ADS 拉起 S1 配置 e2e（M0 验收第 3 项在此闭环） | [下发层](../system_design/260717-1-deliver-layer-design.md) §1~§3、§6 | S1 |
+| **S2 (260720)** | M1 | xDS 下发与运行时骨架 | M-CORE 装配/生命周期（**补轻量设计文档 + esgw.yaml schema**）；`deliver/xds`（ADS server、FromIR、ACK/NACK）；接入 bootstrap 生成与 `esgw bootstrap` 命令；ADS 拉起 S1 配置 e2e（M0 验收第 3 项在此闭环） | [下发层](../system_design/260717-1-deliver-layer-design.md) §1~§3、§6 | S1 ✅ 已完成（2026-07-20，A1~A8 核验见 [sprints/260720](sprints/260720/plan_todos_trace.md)；远端 CI 待推送确认） |
 | S3 | M1 | 配置域与发布流 | M-STORE（SQLite/迁移）；M-CONF（文件真源加载、Origin 定位 CRUD、版本快照、双视角 diff、回滚、发布流状态机、fsnotify 外部修改检测）；原生 static → IR 解析入口（FR-2.1） | [配置域](../system_design/260717-2-config-domain-design.md) | S1 |
 | S4 | M1 | 状态采集与生效确认 | M-STATE（admin client 白名单/串行调度、状态归一化、归属反解、确认快速通道、时间序列环形缓冲、Prometheus 透传）；发布流 CONFIRMING→EFFECTIVE 闭环联调 | [状态采集](../system_design/260717-4-state-collection-design.md) | S2、S3 |
 | S5 | M1 | 管理 API | spec-first `api/openapi.yaml` + oapi-codegen 终审（AD2）；鉴权/会话/CSRF/引导；配置域、状态、证书库全量 REST 端点；SPA 静态资源服务骨架 | [控制台 API](../system_design/260717-3-console-api-design.md) §3~§5 | S3、S4 |
@@ -43,6 +43,6 @@ architecture §8 计划的全部 7 份模块详细设计已完成并交叉互认
 
 | 里程碑 | 验收标准（源自需求 §9 与可行性 §6） |
 |---|---|
-| M0（S1 末 + S2 初） | ① S1/S2 场景 YAML 经编译器产出 static 配置，过 `envoy --mode validate` 且跑通真实流量；② escape hatch 两种形态合成正确；③ 同一 IR 经 ADS 正常拉起（S2 冲刺完成） |
+| M0（S1 末 + S2 初） | ① S1/S2 场景 YAML 经编译器产出 static 配置，过 `envoy --mode validate` 且跑通真实流量；② escape hatch 两种形态合成正确；③ 同一 IR 经 ADS 正常拉起（S2 冲刺完成）✅ ③ 已闭环（2026-07-20，S2 e2e：真实 Envoy 以接入 bootstrap 连 ADS 拉起 S1 场景，四流量断言全过，版本一致性证据见 [sprints/260720](sprints/260720/plan_todos_trace.md) A4 行） |
 | M1（S8 末） | P0 需求全集：xDS + static 双模式下发、控制台配置管理与实时状态、本地账号鉴权、systemd/Docker 部署、FR-5.6 管理面故障不影响数据面 |
 | M2 | P1 全集：统计视图、版本回滚 UI、k8s 环境感知、Helm chart、协议规范文档 |

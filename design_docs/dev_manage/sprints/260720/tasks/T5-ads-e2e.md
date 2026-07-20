@@ -1,6 +1,6 @@
 # T5：ADS e2e + CI 集成 + 收口验收
 
-- **状态**: 未开始
+- **状态**: 已完成（2026-07-20）
 - **依赖**: T3（serve）、T4（bootstrap）
 - **验收锚点**: requirements A2~A5（日志部分）、A7（e2e 部分）、A8；闭环 M0 验收第 3 项
 
@@ -46,3 +46,4 @@
 | 日期 | 记录 |
 |---|---|
 | 2026-07-20 | task 创建 |
+| 2026-07-20 | 完成。① 拓扑取舍（任务书要求自定）：新增 `e2e/xds/` 独立目录，static e2e 不动。四服务（esgw/envoy/两 http-echo 后端）经 `network_mode: service:esgw` 共享 esgw 的网络命名空间（pod 形态）——loopback 硬校验下宿主 loopback 对 linux 容器不可达，共享 netns 后 `deliver.xds.listen` 保持 `127.0.0.1:18000`（与生产默认一致），且 S1 输入的 `127.0.0.1:3000/4000` 端点与 `testdata/certs/` 相对证书路径**零改写**直接可用（static e2e 的 sed/awk 弥合在这里不需要，ADS 与 golden 消费同一份输入）。esgw 跑在容器内：run.sh 按 docker server arch 交叉编译 `CGO_ENABLED=0` 静态 linux 二进制，打入 scratch 镜像（零外部依赖）。adminAddress 取 `0.0.0.0:9901`：envoy admin 只绑 loopback 时 docker 端口发布（DNAT 到 eth0）不可达，发布侧限定 `127.0.0.1:19901`；adminAddress 无 loopback 硬校验。时序全靠断言重试（/ready、config_dump、ACK 日志、流量各 30s），无固定 sleep。② 断言全部落地并本地全过（envoyproxy/envoy:v1.39.0）：A7（/ready=LIVE）、A2（/config_dump 五类型在册，LDS/CDS/RDS/SDS version_info == IR.Version=4ba6bf6b0638；**EDS 的 config_dump 不携带 version_info**（v1.39.0 实测），断言资源在册+@type，版本由 A5 的 EDS ACK 日志佐证）、A4（见下条口径修订）、A5（五类型 `xds: ACK received`）、A3 四断言。③ **A4 口径修订**：任务书字面的「`compile --mode static` 文件头 config_version == ADS version_info」实测不成立——F5 形态化按模式分流，static/xds 两模式 IR 资源形态不同、IR.Version 不同（S1：static 0ebffff04330 / xds 4ba6bf6b0638；版本计算在 F5 之后，属既有设计语义）。e2e 改为断言「同一配置目录 compile --mode xds 产物 version == golden want-xds.json version == ADS version_info」，这是「同一 IR 经 ADS 拉起」（M0 第 3 项）的直接证据；requirements A4 的「static 产物」表述建议后续修订，已记决议。④ A5 前提补齐：T3 把 ACK 定为 Debug 级而 serve 无级别配置，为 `esgw serve` 增加 `-log-level` flag（默认 info，非法值 exit 2；不进 esgw.yaml schema，正式日志配置待 S7/S8）。⑤ Make/CI：新增独立 `make e2e-xds` 目标与 CI `e2e-xds` job（与 static e2e 并列，取舍：两个场景拓扑/前置差异大，分开目标各自独立可跑，比合并单目标清晰；本地默认目标不强制 docker 的约定不破）。⑥ 收口：plan_todos_trace 核验表 A1~A8 全填、路线图 S2 行标完成 + M0 第 ③ 项闭环（2026-07-20，S2 e2e）、sprints 索引与 requirements 状态行更新。本地 `make build test lint` + static e2e + ADS e2e 全绿；commit `1c2ae0f`（cmd -log-level）、`72c947e`（e2e/xds）、`95f7b25`（ci）；**远端 CI 待推送确认**（按会话约束未 push） |
