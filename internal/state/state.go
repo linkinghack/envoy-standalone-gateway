@@ -69,9 +69,11 @@ type ClusterState struct {
 
 // EndpointState is a normalized cluster endpoint health record.
 type EndpointState struct {
-	Address string `json:"address"`
-	Port    uint32 `json:"port"`
-	Health  string `json:"health"`
+	Address   string   `json:"address"`
+	Port      uint32   `json:"port"`
+	Health    string   `json:"health"`
+	Weight    uint32   `json:"weight,omitempty"`
+	FailFlags []string `json:"fail_flags,omitempty"`
 }
 
 // VersionConfirmEvent is emitted when an expected version confirms or times out.
@@ -226,7 +228,7 @@ func (s *Service) refresh(ctx context.Context) error {
 	now := time.Now()
 	s.mu.Lock()
 	s.current.NodeID = s.NodeID
-	s.current.Envoy = ServerInfo{Version: server.Version, State: server.State, HotRestartEpoch: server.Epoch}
+	s.current.Envoy = ServerInfo{Version: server.Version, State: server.State, Uptime: parseUptime(server.Uptime), HotRestartEpoch: server.Epoch}
 	s.current.CollectedAt = now
 	s.current.LastSuccessAt = now
 	s.current.Stale = false
@@ -359,7 +361,20 @@ func parseListeners(body []byte) []ListenerState {
 func parseClusters(body []byte) []ClusterState {
 	var doc struct {
 		Clusters []struct {
-			Name string `json:"name"`
+			Name  string `json:"name"`
+			Hosts []struct {
+				Address struct {
+					Socket struct {
+						Address   string `json:"address"`
+						PortValue uint32 `json:"port_value"`
+					} `json:"socket_address"`
+				} `json:"address"`
+				Health                  string `json:"health_status"`
+				Weight                  uint32 `json:"weight"`
+				FailedActiveHealthCheck bool   `json:"failed_active_health_check"`
+				FailedOutlierCheck      bool   `json:"failed_outlier_check"`
+				FailedActiveHcTimeout   bool   `json:"failed_active_hc_timeout"`
+			} `json:"host_statuses"`
 		} `json:"cluster_statuses"`
 	}
 	if json.Unmarshal(body, &doc) != nil {
@@ -367,9 +382,66 @@ func parseClusters(body []byte) []ClusterState {
 	}
 	out := make([]ClusterState, 0, len(doc.Clusters))
 	for _, c := range doc.Clusters {
-		out = append(out, ClusterState{Name: c.Name, Owner: resolveOwner(c.Name)})
+		cluster := ClusterState{Name: c.Name, Owner: resolveOwner(c.Name)}
+		for _, host := range c.Hosts {
+			health := strings.ToUpper(host.Health)
+			if health == "" {
+				health = "UNKNOWN"
+			} else if health == "HEALTHY" || health == "UNHEALTHY" || health == "DRAINING" || health == "TIMEOUT" {
+				// already normalized
+			} else if strings.Contains(health, "HEALTHY") && !strings.Contains(health, "UNHEALTHY") {
+				health = "HEALTHY"
+			} else {
+				health = "UNHEALTHY"
+			}
+			flags := make([]string, 0, 3)
+			if host.FailedActiveHealthCheck {
+				flags = append(flags, "failed_active_health_check")
+			}
+			if host.FailedOutlierCheck {
+				flags = append(flags, "failed_outlier_check")
+			}
+			if host.FailedActiveHcTimeout {
+				flags = append(flags, "failed_active_hc_timeout")
+			}
+			switch strings.ToLower(host.Health) {
+			case "failed_active_health_check":
+				flags = appendUnique(flags, "failed_active_health_check")
+			case "failed_outlier_check":
+				flags = appendUnique(flags, "failed_outlier_check")
+			case "failed_active_hc_timeout":
+				flags = appendUnique(flags, "failed_active_hc_timeout")
+			}
+			cluster.Endpoints = append(cluster.Endpoints, EndpointState{
+				Address:   host.Address.Socket.Address,
+				Port:      host.Address.Socket.PortValue,
+				Health:    health,
+				Weight:    host.Weight,
+				FailFlags: flags,
+			})
+		}
+		out = append(out, cluster)
 	}
 	return out
+}
+
+func appendUnique(values []string, value string) []string {
+	for _, item := range values {
+		if item == value {
+			return values
+		}
+	}
+	return append(values, value)
+}
+
+func parseUptime(value string) time.Duration {
+	if value == "" {
+		return 0
+	}
+	if seconds, err := time.ParseDuration(value + "s"); err == nil {
+		return seconds
+	}
+	return 0
 }
 
 func resolveOwner(name string) *ObjectRef {
