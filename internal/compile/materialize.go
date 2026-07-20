@@ -14,7 +14,6 @@ import (
 	hcmv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
 	tlsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
 	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/known/anypb"
 
 	"github.com/linkinghack/envoy-standalone-gateway/internal/ir"
 )
@@ -277,7 +276,7 @@ func decodeDownstreamTLS(chain *listenerv3.FilterChain) (*tlsv3.DownstreamTlsCon
 
 // remarshalFilter 把修改后的消息重新封回 Listener filter 的 Any 容器。
 func remarshalFilter(f *listenerv3.Filter, m proto.Message) error {
-	cfg, err := anypb.New(m)
+	cfg, err := marshalAny(m)
 	if err != nil {
 		return err
 	}
@@ -287,7 +286,7 @@ func remarshalFilter(f *listenerv3.Filter, m proto.Message) error {
 
 // remarshalTransportSocket 把修改后的消息重新封回 transport socket 的 Any 容器。
 func remarshalTransportSocket(ts *corev3.TransportSocket, m proto.Message) error {
-	cfg, err := anypb.New(m)
+	cfg, err := marshalAny(m)
 	if err != nil {
 		return err
 	}

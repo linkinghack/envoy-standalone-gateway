@@ -14,7 +14,6 @@ import (
 	filelogv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/access_loggers/file/v3"
 	hcmv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
 	tlsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
-	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
@@ -82,7 +81,7 @@ func (ctx *buildContext) buildHTTPListener(l *protocol.Listener) (*listenerv3.Li
 	if hcm == nil {
 		return nil, nil, errs
 	}
-	hcmAny, err := anypb.New(hcm)
+	hcmAny, err := marshalAny(hcm)
 	if err != nil {
 		return nil, nil, append(errs, buildError(l.Origin, protocol.KindListener, name, "",
 			"marshal HttpConnectionManager: %v", err))
@@ -227,7 +226,7 @@ func buildAccessLog(al *protocol.AccessLog) (*accesslogv3.AccessLog, error) {
 			},
 		}
 	}
-	cfg, err := anypb.New(fal)
+	cfg, err := marshalAny(fal)
 	if err != nil {
 		return nil, fmt.Errorf("marshal FileAccessLog: %w", err)
 	}
@@ -267,7 +266,7 @@ func downstreamTLSSocket(l *protocol.Listener, c *protocol.Certificate) (*corev3
 		}
 		down.RequireClientCertificate = wrapperspb.Bool(true)
 	}
-	cfg, err := anypb.New(down)
+	cfg, err := marshalAny(down)
 	if err != nil {
 		return nil, fmt.Errorf("marshal DownstreamTlsContext: %w", err)
 	}

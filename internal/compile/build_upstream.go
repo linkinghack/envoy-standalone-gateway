@@ -69,7 +69,7 @@ func buildUpstream(u *protocol.Upstream) (*clusterv3.Cluster, []CompileError) {
 		c.TransportSocket = ts
 	}
 	if s.Connection.HTTP2 {
-		cfg, err := anypb.New(&upstreamhttpv3.HttpProtocolOptions{
+		cfg, err := marshalAny(&upstreamhttpv3.HttpProtocolOptions{
 			UpstreamProtocolOptions: &upstreamhttpv3.HttpProtocolOptions_ExplicitHttpConfig_{
 				ExplicitHttpConfig: &upstreamhttpv3.HttpProtocolOptions_ExplicitHttpConfig{
 					ProtocolConfig: &upstreamhttpv3.HttpProtocolOptions_ExplicitHttpConfig_Http2ProtocolOptions{
@@ -187,7 +187,7 @@ func upstreamTLSSocket(t *protocol.UpstreamTLS, dns *protocol.DNSEndpointSource)
 			ValidationContextType: &tlsv3.CommonTlsContext_ValidationContext{ValidationContext: vc},
 		}
 	}
-	cfg, err := anypb.New(up)
+	cfg, err := marshalAny(up)
 	if err != nil {
 		return nil, fmt.Errorf("marshal UpstreamTlsContext: %w", err)
 	}

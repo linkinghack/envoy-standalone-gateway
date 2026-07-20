@@ -85,20 +85,20 @@ func normalizePolicies(lk *linked, levels ...[]protocol.PolicyAttachment) effect
 // 后续加入时无需挪动既有 filter。所有策略 filter 常驻链上、默认 pass-through，
 // 实际生效范围由 per-rule typed_per_filter_config 控制，避免 filter chain 结构抖动。
 func httpFilters(jwtAsm *jwtAssembly) ([]*hcmv3.HttpFilter, []CompileError) {
-	corsCfg, err := anypb.New(&corsv3.Cors{})
+	corsCfg, err := marshalAny(&corsv3.Cors{})
 	if err != nil {
 		return nil, []CompileError{{Stage: StageBuild, Severity: SeverityError, Message: err.Error()}}
 	}
-	jwtCfg, err := anypb.New(jwtAsm.filterConfig())
+	jwtCfg, err := marshalAny(jwtAsm.filterConfig())
 	if err != nil {
 		return nil, []CompileError{{Stage: StageBuild, Severity: SeverityError, Message: err.Error()}}
 	}
 	// filter 层无 token bucket = 全局限流关闭（pass-through），per-rule 配置开启。
-	lrlCfg, err := anypb.New(&localratelimitv3.LocalRateLimit{StatPrefix: "local_ratelimit"})
+	lrlCfg, err := marshalAny(&localratelimitv3.LocalRateLimit{StatPrefix: "local_ratelimit"})
 	if err != nil {
 		return nil, []CompileError{{Stage: StageBuild, Severity: SeverityError, Message: err.Error()}}
 	}
-	routerCfg, err := anypb.New(&routerv3.Router{})
+	routerCfg, err := marshalAny(&routerv3.Router{})
 	if err != nil {
 		return nil, []CompileError{{Stage: StageBuild, Severity: SeverityError, Message: err.Error()}}
 	}
@@ -133,11 +133,11 @@ func (ctx *buildContext) typedPerFilterConfig(eff effectivePolicies, jwtAsm *jwt
 		tpc[filterName] = cfg
 	}
 	if eff.cors != nil {
-		cfg, err := anypb.New(buildCorsPolicy(eff.cors))
+		cfg, err := marshalAny(buildCorsPolicy(eff.cors))
 		put(corsFilterName, cfg, err)
 	}
 	if eff.rateLimit != nil {
-		cfg, err := anypb.New(buildLocalRateLimit(eff.rateLimit))
+		cfg, err := marshalAny(buildLocalRateLimit(eff.rateLimit))
 		put(localRateLimitFilterName, cfg, err)
 	}
 	if eff.jwt != nil {
@@ -145,7 +145,7 @@ func (ctx *buildContext) typedPerFilterConfig(eff effectivePolicies, jwtAsm *jwt
 		if jerr != nil {
 			errs = append(errs, buildError(r.Origin, protocol.KindRoute, r.Metadata.Name, rulePath, "%v", jerr))
 		} else {
-			cfg, err := anypb.New(&jwtv3.PerRouteConfig{
+			cfg, err := marshalAny(&jwtv3.PerRouteConfig{
 				RequirementSpecifier: &jwtv3.PerRouteConfig_RequirementName{RequirementName: reqName},
 			})
 			put(jwtAuthnFilterName, cfg, err)
