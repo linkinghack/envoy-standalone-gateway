@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -90,10 +91,19 @@ func (p *Publisher) PublishWithBase(ctx context.Context, author, message, baseHa
 	if len(loadErrs) != 0 {
 		return PublishResult{}, failRun("VALIDATE_FAILED", fmt.Errorf("draft validation failed: %d error(s)", len(loadErrs)))
 	}
-	if draft.Config == nil {
-		return PublishResult{}, failRun("VALIDATE_FAILED", errors.New("native.yaml publish is not supported yet"))
+	var out *ir.IR
+	var compileErrs []compile.CompileError
+	if draft.Mode == ModeNative {
+		out, err = LoadNative(filepath.Join(p.DataDir, "native.yaml"))
+		if err != nil {
+			return PublishResult{}, failRun("VALIDATE_FAILED", err)
+		}
+	} else {
+		if draft.Config == nil {
+			return PublishResult{}, failRun("VALIDATE_FAILED", errors.New("abstract draft has no config set"))
+		}
+		out, compileErrs = compile.Compile(draft.Config, compile.Options{Mode: p.Mode})
 	}
-	out, compileErrs := compile.Compile(draft.Config, compile.Options{Mode: p.Mode})
 	if len(compileErrs) != 0 {
 		run.ErrorsJSON = marshalCompileErrors(compileErrs)
 	}
@@ -123,6 +133,12 @@ func (p *Publisher) PublishWithBase(ctx context.Context, author, message, baseHa
 	meta := SnapshotMeta{
 		Seq: seq, CreatedAt: now.Format(time.RFC3339Nano), Author: author,
 		Message: message, Mode: string(p.Mode), IRVersion: out.Version,
+		ParentSeq: func() int64 {
+			if seq > 1 {
+				return seq - 1
+			}
+			return 0
+		}(),
 		State: "publishing", Stats: map[string]int{
 			"listeners": len(out.Listeners), "clusters": len(out.Clusters),
 			"routes": len(out.Routes), "endpoints": len(out.Endpoints),
@@ -132,10 +148,27 @@ func (p *Publisher) PublishWithBase(ctx context.Context, author, message, baseHa
 	if _, err := Snapshot(p.DataDir, seq, meta); err != nil {
 		return PublishResult{}, failRun("PUBLISH_FAILED", err)
 	}
+	if seq > 1 {
+		if diff, diffErr := DiffSnapshots(p.DataDir, seq-1, seq); diffErr == nil {
+			if payload, marshalErr := json.Marshal(diff); marshalErr == nil {
+				run.DiffJSON = string(payload)
+				run.UpdatedAt = time.Now().UTC()
+				if err := p.Store.UpdatePublishRun(ctx, run); err != nil {
+					return PublishResult{}, failRun("PUBLISH_FAILED", err)
+				}
+			}
+		}
+	}
 	stats, _ := json.Marshal(meta.Stats)
 	v := store.Version{
 		Seq: seq, CreatedAt: now, Author: author, Message: message,
 		Mode: string(p.Mode), IRVersion: out.Version, State: "publishing",
+		ParentSeq: func() int64 {
+			if seq > 1 {
+				return seq - 1
+			}
+			return 0
+		}(),
 		StatsJSON: string(stats),
 	}
 	if err := p.Store.InsertVersion(ctx, v); err != nil {

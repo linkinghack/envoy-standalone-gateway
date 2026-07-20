@@ -6,7 +6,8 @@
 | T2 | M-CONF 草稿加载与 draftHash | 已完成 | conf 单测 |
 | T3 | 版本快照与最小发布编排、冲刺收口 | 已完成 | 快照/发布单测、全量检查 |
 | T4 | 发布运行状态机基础（publish_runs、baseHash、CONFIRMING/EFFECTIVE） | 已完成 | conf/store 单测、全量检查 |
-| T5 | 原生 static → IR 解析、diff/回滚、fsnotify | 待开始 | 后续拆分 |
+| T5 | 原生 static → IR 解析、diff/回滚、fsnotify、Origin CRUD | 已完成 | conf 单测、全量检查 |
+| T6 | S4 前置：M-STATE admin client、版本确认与状态快照骨架 | 已完成 | state 单测、全量检查 |
 
 ## 冲刺日志
 
@@ -19,3 +20,5 @@
 | 2026-07-20 | T3 完成：`conf.Snapshot` 临时目录 + rename 原子快照、`meta.json`；`make build test lint` 全绿 |
 | 2026-07-20 | 补充最小 `conf.Publisher.Publish`：草稿加载→Compile→版本快照→Deliverer.Apply→effective/failed 留痕；native/diff/rollback/fsnotify 仍后续拆分 |
 | 2026-07-20 | T4 完成：publish_runs 增加 version_seq/trigger_by 与读写 API；Publisher 增加 PublishWithBase 乐观并发、VALIDATING→VALIDATED→PUBLISHING→CONFIRMING→EFFECTIVE 状态推进、Confirm 生效确认；保留 Publish 兼容包装；新增冲突/生命周期单测 |
+| 2026-07-20 | T5 完成：native.yaml 严格 protojson→IR/F6 校验、快照文本 diff、强制确认回滚、fsnotify（含 polling fallback）、按 Origin 文档替换/删除 CRUD；发布写入 parent_seq 与 diff_json |
+| 2026-07-20 | T6 完成：新增 internal/state 只读 admin client（UDS/TCP、路径白名单、Prometheus 流式透传）、config_dump 版本确认快速通道、状态快照、listener/cluster 归属反解、有限内存 SeriesStore |

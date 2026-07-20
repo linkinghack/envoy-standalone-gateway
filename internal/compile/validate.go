@@ -61,6 +61,16 @@ func validateIR(out *ir.IR) []CompileError {
 	return errs
 }
 
+// ValidateIR exposes the same F6 resource and reference checks used by
+// Compile for callers that construct an IR through another front door (for
+// example the native Envoy bootstrap parser).
+func ValidateIR(out *ir.IR) []CompileError {
+	if out == nil {
+		return []CompileError{{Stage: StageValidate, Severity: SeverityError, Message: "nil IR"}}
+	}
+	return validateIR(out)
+}
+
 // validateResource 校验单个资源：PGV Validate() + Any typed_config 递归校验。
 func validateResource(m proto.Message) error {
 	return validateResourceAt(m, 0)
