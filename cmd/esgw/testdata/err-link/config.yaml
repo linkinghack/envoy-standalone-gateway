@@ -1,0 +1,13 @@
+apiVersion: esgw/v1alpha1
+kind: Listener
+metadata: {name: http}
+spec: {port: 80, protocol: HTTP}
+---
+apiVersion: esgw/v1alpha1
+kind: Route
+metadata: {name: web}
+spec:
+  listeners: [http]
+  rules:
+    - match: {path: {prefix: /}}
+      backends: [{upstream: ghost}]

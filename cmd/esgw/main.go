@@ -3,16 +3,46 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/linkinghack/envoy-standalone-gateway/internal/version"
 )
 
 func main() {
-	if len(os.Args) >= 2 && os.Args[1] == "version" {
-		fmt.Printf("%s %s\n", version.BinaryName, version.Version)
-		return
-	}
-	fmt.Fprintf(os.Stderr, "usage: %s <command> [flags]\n\nCommands:\n  version   print version\n", version.BinaryName)
-	os.Exit(2)
+	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
+
+// run 是顶层分发（标准库 flag + 简单分发，不引 cobra，T6 任务书）。
+// 返回进程退出码：0 成功（允许 Warning），1 有 Error，2 用法错误。
+func run(args []string, stdout, stderr io.Writer) int {
+	if len(args) == 0 {
+		usage(stderr)
+		return 2
+	}
+	switch args[0] {
+	case "version":
+		eprintf(stdout, "%s %s\n", version.BinaryName, version.Version)
+		return 0
+	case "compile":
+		return runCompile(args[1:], stdout, stderr)
+	default:
+		eprintf(stderr, "unknown command %q\n", args[0])
+		usage(stderr)
+		return 2
+	}
+}
+
+func usage(stderr io.Writer) {
+	eprintf(stderr, `usage: %s <command> [flags]
+
+Commands:
+  compile   compile a config directory into an Envoy config artifact
+  version   print version
+`, version.BinaryName)
+}
+
+// eprintf / eprintln 写用户输出，忽略写错误（CLI 的 stderr/stdout 写失败
+// 无可补救，errcheck 合规用集中在此处）。
+func eprintf(w io.Writer, format string, args ...any) { _, _ = fmt.Fprintf(w, format, args...) }
+func eprintln(w io.Writer, s string)                  { _, _ = fmt.Fprintln(w, s) }
