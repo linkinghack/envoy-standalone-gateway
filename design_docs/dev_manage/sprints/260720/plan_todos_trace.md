@@ -11,7 +11,7 @@
 
 | ID | 任务 | 状态 | 依赖 | 验收锚点 |
 |---|---|---|---|---|
-| T1 | M-CORE 轻量设计文档 + esgw.yaml schema + internal/config | 未开始 | — | A7（硬校验部分）、G1 |
+| T1 | M-CORE 轻量设计文档 + esgw.yaml schema + internal/config | 已完成 | — | A7（硬校验部分）、G1 |
 | T2 | deliver/xds FromIR 纯函数装配 + 依赖引入 | 未开始 | T1（可并行，只依赖 IR 契约） | A1 |
 | T3 | Deliverer 接口 + ADS server + ACK/NACK + esgw serve | 未开始 | T1、T2 | A2、A5、A6 |
 | T4 | 接入 bootstrap 渲染 + esgw bootstrap 命令 | 未开始 | T1（T3 后可独立做） | A7 |
@@ -24,12 +24,13 @@
 | 日期 | 事项 |
 |---|---|
 | 2026-07-20 | 冲刺创建：需求、技术设计、5 个 task 文档就绪；依赖决策 SD1（go-control-plane 根模块 v0.14.0 + envoy v1.37.0）已实测 MVS 兼容；等待 T1 开工 |
+| 2026-07-20 | T1 完成：dev_design/260720-1-mcore-assembly.md + internal/config（LoadFile strict decode + defaults + 校验，含非 loopback listen 硬校验）；commit `ad9f052`（docs）、`10bcacb`（config）；`make build test lint` 全绿 |
 
 ## 决议记录（冲刺内产生的设计决策）
 
 | 未决项 | 决议 | 日期 | 已回写文档 |
 |---|---|---|---|
-| （待产生） | | | |
+| `deliver.xds.listen` 的 host 为 `localhost` 时是否算 loopback（任务书要求自定取舍） | 按 loopback 接受；其余非 IP 字面量主机名一律拒绝（不做运行期 DNS 解析，保证校验确定性） | 2026-07-20 | dev_design/260720-1-mcore-assembly.md §3.1、T1 进展记录 |
 
 ## 验收核验（requirements §4 A1~A8）
 

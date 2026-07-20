@@ -1,6 +1,6 @@
 # T1：M-CORE 轻量设计文档 + esgw.yaml schema + internal/config
 
-- **状态**: 未开始
+- **状态**: 已完成
 - **依赖**: 无
 - **验收锚点**: requirements A7（硬校验部分）、G1
 
@@ -60,3 +60,4 @@
 | 日期 | 记录 |
 |---|---|
 | 2026-07-20 | task 创建 |
+| 2026-07-20 | **完成**（commit `ad9f052` docs + `10bcacb` config）。完成内容：① dev_design/260720-1-mcore-assembly.md 落地（M-CORE 职责、S2 启动序与关停、骨架边界、esgw.yaml schema 生效键 + 保留键清单）；② internal/config（doc.go/config.go/config_test.go）：LoadFile = 单文档 strict decode（yaml.v3 Node→JSON + DisallowUnknownFields，同 protocol 栈）+ defaults + 校验；③ 表驱动单测 24 例，覆盖任务书第 3 步全部条目；`make build test lint` 全绿（golangci-lint 0 issues）。关键取舍：**localhost 按 loopback 接受**（本机解析语义稳定，拒绝它对同机部署不友好；其余非 IP 字面量主机名无法静态判定 loopback，一律拒绝——不做运行期 DNS 解析，保证校验确定性）；`deliver.mode: static` 在 config 层是合法枚举（SD2 的「报未实现」归 serve 启动，T3 接线）；ackTimeout 增加「必须为正」校验（任务书未列，属防御性补充，默认 15s 不受影响）；adminAddress 显式拒绝 `tcp://` 等其他 scheme（否则 `SplitHostPort` 会把 `tcp://127.0.0.1` 当 host 漏过）。遇到的问题：staticcheck QF1002 要求 tagged switch，已按提示重构 validateListen；无设计与实现冲突。 |
