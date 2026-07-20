@@ -258,7 +258,8 @@
                   "route_config_name": "rc/https"
                 },
                 "server_name": "esgw",
-                "stat_prefix": "lis/https"
+                "stat_prefix": "lis/https",
+                "strip_any_host_port": true
               }
             }
           ],
@@ -284,6 +285,14 @@
                 }
               }
             }
+          }
+        }
+      ],
+      "listener_filters": [
+        {
+          "name": "envoy.filters.listener.tls_inspector",
+          "typed_config": {
+            "@type": "type.googleapis.com/envoy.extensions.filters.listener.tls_inspector.v3.TlsInspector"
           }
         }
       ],
@@ -439,5 +448,5 @@
       }
     }
   },
-  "version": "d335c58d5a7f"
+  "version": "56e6b882b163"
 }

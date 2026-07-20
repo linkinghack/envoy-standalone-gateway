@@ -34,5 +34,6 @@ const (
 	localRateLimitFilterName = "envoy.filters.http.local_ratelimit"
 	routerFilterName         = "envoy.filters.http.router"
 	tlsTransportSocketName   = "envoy.transport_sockets.tls"
+	tlsInspectorFilterName   = "envoy.filters.listener.tls_inspector"
 	fileAccessLogName        = "envoy.access_loggers.file"
 )

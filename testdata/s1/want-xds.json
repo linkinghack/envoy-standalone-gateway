@@ -114,7 +114,8 @@
                   "route_config_name": "rc/http"
                 },
                 "server_name": "esgw",
-                "stat_prefix": "lis/http"
+                "stat_prefix": "lis/http",
+                "strip_any_host_port": true
               }
             }
           ]
@@ -180,7 +181,8 @@
                   "route_config_name": "rc/https"
                 },
                 "server_name": "esgw",
-                "stat_prefix": "lis/https"
+                "stat_prefix": "lis/https",
+                "strip_any_host_port": true
               }
             }
           ],
@@ -258,7 +260,8 @@
                   "route_config_name": "rc/https"
                 },
                 "server_name": "esgw",
-                "stat_prefix": "lis/https"
+                "stat_prefix": "lis/https",
+                "strip_any_host_port": true
               }
             }
           ],
@@ -284,6 +287,14 @@
                 }
               }
             }
+          }
+        }
+      ],
+      "listener_filters": [
+        {
+          "name": "envoy.filters.listener.tls_inspector",
+          "typed_config": {
+            "@type": "type.googleapis.com/envoy.extensions.filters.listener.tls_inspector.v3.TlsInspector"
           }
         }
       ],
@@ -376,5 +387,5 @@
       }
     }
   },
-  "version": "8282e70277a9"
+  "version": "4ba6bf6b0638"
 }

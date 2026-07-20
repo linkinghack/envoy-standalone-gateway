@@ -12,6 +12,7 @@ import (
 	listenerv3 "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
 	routev3 "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 	filelogv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/access_loggers/file/v3"
+	tlsinspectorv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/listener/tls_inspector/v3"
 	hcmv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
 	tlsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
 	"google.golang.org/protobuf/types/known/durationpb"
@@ -107,6 +108,20 @@ func (ctx *buildContext) buildHTTPListener(l *protocol.Listener) (*listenerv3.Li
 		Address:      socketAddress(l.Spec.Address, l.Spec.Port),
 		FilterChains: chains,
 	}
+	if l.Spec.Protocol == protocol.ProtocolHTTPS {
+		// SNI filter_chain_match 依赖 tls_inspector listener filter 提取
+		// ClientHello server_name；缺它所有带 server_names 的 chain 都无法
+		// 命中、连接被直接关闭（T7 e2e 实测复现：握手即 EOF）。
+		tiAny, err := marshalAny(&tlsinspectorv3.TlsInspector{})
+		if err != nil {
+			return nil, nil, append(errs, buildError(l.Origin, protocol.KindListener, name, "",
+				"marshal TlsInspector: %v", err))
+		}
+		lis.ListenerFilters = []*listenerv3.ListenerFilter{{
+			Name:       tlsInspectorFilterName,
+			ConfigType: &listenerv3.ListenerFilter_TypedConfig{TypedConfig: tiAny},
+		}}
+	}
 	return lis, rc, errs
 }
 
@@ -187,6 +202,11 @@ func (ctx *buildContext) buildHCM(l *protocol.Listener, jwtAsm *jwtAssembly) (*h
 			IdleTimeout: durationpb.New(gw.HTTP.IdleTimeout.Duration),
 		},
 		MaxRequestHeadersKb: wrapperspb.UInt32(uint32(*gw.HTTP.MaxRequestHeadersKB)),
+		// vhost 域名匹配剥离 Host/:authority 端口后缀（nginx server_name 同语义）：
+		// 非标准端口部署时 Host 带 :port，不剥离会导致兜底 404（T7 e2e 实测复现）。
+		StripPortMode: &hcmv3.HttpConnectionManager_StripAnyHostPort{
+			StripAnyHostPort: true,
+		},
 	}
 	// serverHeader："" 表示透传上游（协议 §3.1）。
 	if *gw.HTTP.ServerHeader == "" {

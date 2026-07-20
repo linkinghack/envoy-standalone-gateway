@@ -90,7 +90,8 @@
                   "route_config_name": "rc/http"
                 },
                 "server_name": "esgw",
-                "stat_prefix": "lis/http"
+                "stat_prefix": "lis/http",
+                "strip_any_host_port": true
               }
             }
           ]
@@ -124,5 +125,5 @@
     }
   },
   "secrets": {},
-  "version": "3619ef780fd1"
+  "version": "2415e2e7e686"
 }
