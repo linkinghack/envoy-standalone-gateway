@@ -1,6 +1,6 @@
 # T3：Deliverer 接口 + ADS server + ACK/NACK + esgw serve
 
-- **状态**: 未开始
+- **状态**: 已完成
 - **依赖**: T1（config）、T2（FromIR）
 - **验收锚点**: requirements A2、A5、A6
 
@@ -44,3 +44,7 @@
 | 日期 | 记录 |
 |---|---|
 | 2026-07-20 | task 创建 |
+| 2026-07-20 | T3 完成。三块交付：`internal/deliver/deliver.go`（Deliverer/Status/Phase/Event + ErrEndpointsUnsupported）、`internal/deliver/xds/server.go`（ADS server + SnapshotCache 生命周期 + callbacks ACK/NACK）、`internal/core/serve.go` + `cmd/esgw/serve.go`（esgw serve）。commit `3987962`（deliver）、`ccd30e9`（xds）、`3051d49`（core,cmd）。`make build test lint` 全绿；deliver/xds 与 core 另过 `go test -race` |
+| 2026-07-20 | go-control-plane v0.14 API 核对结论（对照设计文档 v0.13 时代示例，语义无偏离）：① `SnapshotCache.SetSnapshot(ctx, node, snapshot)` 带 ctx 参数；② `server.NewServer(ctx, cache, callbacks, opts...)` 带 ctx 参数——Serve 用同一 ctx 构造，ctx 取消先终止全部 xDS 流，GracefulStop 因此不会挂死在长流上；③ `cache.IDHash`（取 node.Id）、`cache.NewSnapshotCache(ads, hash, logger)`、`server.CallbackFuncs` 与设计一致；④ callbacks 在 nonce 判陈**之前**被调用（pkg/server/sotw/v3/ads.go），NACK 必然到达 OnStreamRequest；⑤ 未知 node id：SnapshotCache 无其快照时 watch 挂起无响应，与 §2.3 预期一致；⑥ 冻结签名 `Events() (<-chan Event, cancel func())` 按字面是 Go 语法错误（结果列表须同命名或同匿名），落地为 `(ch <-chan Event, cancel func())`，签名语义不变 |
+| 2026-07-20 | 取舍记录：① 幂等跳过**不重发** Applied 事件、Status 不变——事件语义是「发生了一次换版受理」，幂等跳过无换版动作，重发会让消费方误判新发布；跳过由 Apply 同步 nil 返回表达；② 事件 fan-out 用容量 16 的缓冲通道/订阅者，慢消费者**丢弃新事件并计数**（dropped 计数 + Warn 日志）——事件流是观察通道，权威状态是 Status，阻塞 Apply 不可接受；③ ACK 日志用 **Debug** 级且仅在 ACK 版本前进时记录（按 type_url 跟踪）——ACK 是每类型每次换版的常态路径，Info 级会产生五倍类型数的常态噪音；NACK 用 Error、误接 node 用 Warn；④ 日志引入 `log/slog`（stdlib）作为项目首个日志约定：此前各包无日志，slog 零新依赖且为 stdlib 标准；go-control-plane 的 `pkg/log.Logger` 经 gcpLogger 桥接到 slog |
+| 2026-07-20 | 验收：A2 单测层达成（TestApplyServesAllTypes：真实 127.0.0.1:0 端口 + 真实 ADS gRPC client 以 node.id=esgw-node 拉全五类型，version_info==IR.Version）；A5 单测层达成（TestNACK：Event{Nacked} Detail 含 type_url+nonce+原文、Phase=nacked、重请求仍收原 version 即 snapshot 未替换、不自动重推）；A6 达成（TestApplyIdempotentSkip：重复 Apply 成功、客户端无新推送、Status 不变、无重复事件）；static mode serve 报错与 esgw.yaml 缺失/非法 exit 码有 cmd 层测试（serve_test.go）；esgw serve 可启动并服务有 core 层 smoke（TestRunServeSmoke） |

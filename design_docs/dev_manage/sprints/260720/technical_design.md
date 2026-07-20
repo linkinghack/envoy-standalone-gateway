@@ -52,7 +52,7 @@ type Deliverer interface {
     Apply(ctx context.Context, ir *ir.IR) error
     UpdateEndpoints(ctx context.Context, updates map[string]*endpointv3.ClusterLoadAssignment) error
     Status() Status
-    Events() (<-chan Event, cancel func())
+    Events() (ch <-chan Event, cancel func())   // 字面修正（T3）：结果列表须同命名或同匿名，语义不变
 }
 type Status struct { Version string; Phase Phase; Detail string; UpdatedAt time.Time }
 type Phase  // idle | delivering | awaiting_confirm | confirmed | nacked | failed
