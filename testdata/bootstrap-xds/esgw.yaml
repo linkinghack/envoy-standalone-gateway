@@ -1,0 +1,10 @@
+# bootstrap-xds golden 用例的 esgw.yaml 输入（Sprint 260720 T4）：
+# 显式给出 deliver.xds 各字段，产物经 xds.RenderBootstrap 渲染，
+# 快照为 want-bootstrap.yaml。
+deliver:
+  mode: xds
+  xds:
+    listen: 127.0.0.1:18000
+    nodeID: esgw-node
+    nodeCluster: esgw
+    adminAddress: unix:///var/run/esgw/envoy-admin.sock

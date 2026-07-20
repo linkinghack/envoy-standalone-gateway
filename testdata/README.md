@@ -6,6 +6,8 @@
 testdata/<case>/input/*.yaml      协议 YAML 输入（编译零错误的正例）
 testdata/<case>/want-static.yaml  static 模式产物快照（static.Render）
 testdata/<case>/want-xds.json     xds 模式产物快照（deliver.SnapshotJSON）
+testdata/bootstrap-xds/esgw.yaml            接入 bootstrap 的 esgw.yaml 输入（S2 T4）
+testdata/bootstrap-xds/want-bootstrap.yaml  接入 bootstrap 产物快照（xds.RenderBootstrap）
 testdata/errors/<case>/input/*.yaml      错误用例输入
 testdata/errors/<case>/want-errors.json  错误集合快照（stage/severity/SourceRef/message）
 testdata/certs/                   自签测试证书（仅测试用，见其 README）

@@ -6,6 +6,8 @@
 //	testdata/<case>/input/*.yaml     协议 YAML 输入
 //	testdata/<case>/want-static.yaml static 模式产物快照（static.Render）
 //	testdata/<case>/want-xds.json    xds 模式产物快照（deliver.SnapshotJSON）
+//	testdata/bootstrap-xds/esgw.yaml          接入 bootstrap 输入（S2 T4）
+//	testdata/bootstrap-xds/want-bootstrap.yaml 接入 bootstrap 产物快照（xds.RenderBootstrap）
 //	testdata/errors/<case>/input/*.yaml      错误用例输入
 //	testdata/errors/<case>/want-errors.json  错误集合快照
 //
@@ -26,8 +28,10 @@ import (
 	"testing"
 
 	"github.com/linkinghack/envoy-standalone-gateway/internal/compile"
+	"github.com/linkinghack/envoy-standalone-gateway/internal/config"
 	"github.com/linkinghack/envoy-standalone-gateway/internal/deliver"
 	"github.com/linkinghack/envoy-standalone-gateway/internal/deliver/static"
+	"github.com/linkinghack/envoy-standalone-gateway/internal/deliver/xds"
 	"github.com/linkinghack/envoy-standalone-gateway/internal/protocol"
 )
 
@@ -166,6 +170,27 @@ func TestGoldenErrors(t *testing.T) {
 			compareGolden(t, filepath.Join("testdata", "errors", e.Name(), "want-errors.json"), data)
 		})
 	}
+}
+
+// TestGoldenBootstrap 是接入 bootstrap 的 golden 快照（Sprint 260720 T4）：
+// testdata/bootstrap-xds/esgw.yaml 经 config.LoadFile → xds.RenderBootstrap
+// 渲染，产物快照为 want-bootstrap.yaml。刷新同 -update 约定。
+func TestGoldenBootstrap(t *testing.T) {
+	chdirRepoRoot(t)
+	cfg, err := config.LoadFile(filepath.Join("testdata", "bootstrap-xds", "esgw.yaml"))
+	if err != nil {
+		t.Fatalf("load esgw.yaml: %v", err)
+	}
+	b, err := xds.RenderBootstrap(xds.BootstrapOpts{
+		NodeID:       cfg.Deliver.XDS.NodeID,
+		NodeCluster:  cfg.Deliver.XDS.NodeCluster,
+		XDSListen:    cfg.Deliver.XDS.Listen,
+		AdminAddress: cfg.Deliver.XDS.AdminAddress,
+	})
+	if err != nil {
+		t.Fatalf("render bootstrap: %v", err)
+	}
+	compareGolden(t, filepath.Join("testdata", "bootstrap-xds", "want-bootstrap.yaml"), b)
 }
 
 // compareGolden 比对或（-update 时）刷新 golden 文件。
