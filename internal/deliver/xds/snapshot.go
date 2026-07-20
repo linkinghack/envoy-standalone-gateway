@@ -1,6 +1,6 @@
 // Package xds 是下发层 xDS 路线组件（M-DELIVER/xds，下发层设计 §2）。
 // 本文件为 Snapshot 装配纯函数 FromIR；ADS server（SnapshotCache 生命周期 +
-// callbacks ACK/NACK 跟踪）见 server.go；接入 bootstrap 渲染归 Sprint 260720 T4。
+// callbacks ACK/NACK 跟踪）见 server.go；接入 bootstrap 渲染见 bootstrap.go。
 package xds
 
 import (
