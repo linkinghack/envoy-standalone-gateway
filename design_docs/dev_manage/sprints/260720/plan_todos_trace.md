@@ -14,7 +14,7 @@
 | T1 | M-CORE 轻量设计文档 + esgw.yaml schema + internal/config | 已完成 | — | A7（硬校验部分）、G1 |
 | T2 | deliver/xds FromIR 纯函数装配 + 依赖引入 | 已完成 | T1（可并行，只依赖 IR 契约） | A1 |
 | T3 | Deliverer 接口 + ADS server + ACK/NACK + esgw serve | 已完成 | T1、T2 | A2、A5、A6 |
-| T4 | 接入 bootstrap 渲染 + esgw bootstrap 命令 | 未开始 | T1（T3 后可独立做） | A7 |
+| T4 | 接入 bootstrap 渲染 + esgw bootstrap 命令 | 已完成 | T1（T3 后可独立做） | A7 |
 | T5 | ADS e2e + CI 集成 + 收口验收 | 未开始 | T3、T4 | A2~A4、A5（日志）、A7、A8 |
 
 状态枚举：`未开始` / `进行中` / `已完成` / `受阻(附原因)`
@@ -27,6 +27,7 @@
 | 2026-07-20 | T1 完成：dev_design/260720-1-mcore-assembly.md + internal/config（LoadFile strict decode + defaults + 校验，含非 loopback listen 硬校验）；commit `ad9f052`（docs）、`10bcacb`（config）；`make build test lint` 全绿 |
 | 2026-07-20 | T2 完成：internal/deliver/xds FromIR 纯函数装配（Consistent + SDS 闭合补检）+ go-control-plane v0.14.0 依赖引入；commit `7c0fe64`（deps）、`bbf1fbd`（xds）；`make build test lint` 全绿，go-licenses 通过 |
 | 2026-07-20 | T3 完成：internal/deliver Deliverer 接口与状态事件模型、xds ADS server（ACK/NACK 跟踪、事件 fan-out）、internal/core RunServe 与 esgw serve 命令；commit `3987962`（deliver）、`ccd30e9`（xds）、`3051d49`（core,cmd）；`make build test lint` 全绿，deliver/xds 与 core 过 -race |
+| 2026-07-20 | T4 完成：xds.RenderBootstrap 纯函数（§2.7 骨架 proto → PGV 自检 → 复用 static 确定性 YAML 路径，发射器导出为 static.MarshalYAML）+ esgw bootstrap 命令 + bootstrap-xds golden；产物经真实 Envoy v1.37.5 `--mode validate` 实测通过；commit `d7c9c79`（static）、`dae9d76`（xds）、`b2a9895`（cmd）、`eb49acc`（test）；`make build test lint` 全绿 |
 
 ## 决议记录（冲刺内产生的设计决策）
 
@@ -39,6 +40,7 @@
 | ACK 日志级别（任务书要求自定） | Debug 级且仅在 ACK 版本前进时记录（按 type_url 跟踪）：ACK 是每类型每次换版的常态路径，Info 级会产生五倍类型数的常态噪音；NACK 用 Error、误接 node 用 Warn | 2026-07-20 | T3 进展记录、internal/deliver/xds/server.go onStreamRequest 注释 |
 | 项目日志方案（此前各包无日志约定） | 引入 stdlib `log/slog`：零新依赖、结构化；go-control-plane `pkg/log.Logger` 经桥接适配到 slog | 2026-07-20 | T3 进展记录、internal/core/serve.go 包注释 |
 | 冻结签名 `Events() (<-chan Event, cancel func())` 按字面是 Go 语法错误 | 落地为 `(ch <-chan Event, cancel func())`（结果列表同命名），签名语义不变 | 2026-07-20 | T3 进展记录、commit `3987962` |
+| 接入 bootstrap 产物与 §2.7 骨架的字面出入：`lb_policy: ROUND_ROBIN` 等枚举零值字段被省略 | 接受省略：protojson 不输出零值字段（与 static.Render 产物同一路径、同一风格），语义等价（Envoy 缺省即 ROUND_ROBIN）；骨架其余字段（type: STATIC、connect_timeout: 5s、显式 h2、ads GRPC/V3）均按骨架输出 | 2026-07-20 | T4 进展记录、internal/deliver/xds/bootstrap_test.go 注释 |
 
 ## 验收核验（requirements §4 A1~A8）
 
@@ -50,5 +52,5 @@
 | A4 | static 产物与 ADS 下发 IR.Version 一致（M0 第 3 项闭环） | 待核验 | |
 | A5 | ACK 可见 + NACK 单测（不重推） | 已核验（T3 单测层） | internal/deliver/xds/server_test.go TestNACK：ErrorDetail 请求 → Event{Nacked}（Detail 含 type_url+nonce+原文）+ Phase=nacked + 重请求仍收原 version（snapshot 未替换、不自动重推）；ACK 日志路径由 onStreamRequest 覆盖（Debug 级，版本前进才记录）；commit `ccd30e9` |
 | A6 | 幂等跳过 | 已核验（T3 单测层） | internal/deliver/xds/server_test.go TestApplyIdempotentSkip：重复 Apply 同 IR 成功、客户端 500ms 内无新推送、Status 不变、无重复 Applied 事件；commit `ccd30e9` |
-| A7 | bootstrap 导出被真实 Envoy 接受 + 非 loopback 硬校验 | 待核验 | |
+| A7 | bootstrap 导出被真实 Envoy 接受 + 非 loopback 硬校验 | 单测层已核验（T1 硬校验 + T4 bootstrap）；e2e 层待 T5 | 非 loopback 硬校验：internal/config config_test.go（validateListen 表驱动，T1）；bootstrap：internal/deliver/xds/bootstrap_test.go（形态/默认值/确定性/关键字段断言）+ testdata/bootstrap-xds/want-bootstrap.yaml golden + 真实 Envoy v1.37.5（docker）`--mode validate` 实测 OK（包内 TestRenderBootstrapEnvoyValidate 复用 envoycheck，无二进制按约定 skip）；commit `dae9d76`、`eb49acc` |
 | A8 | CI 全绿、本地可复现 | 待核验 | |

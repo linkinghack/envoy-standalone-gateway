@@ -1,6 +1,6 @@
 # T4：接入 bootstrap 渲染 + esgw bootstrap 命令
 
-- **状态**: 未开始
+- **状态**: 已完成
 - **依赖**: T1（config 的 XDS 字段）；与 T3 无代码依赖，可在 T3 后并行或顺序进行
 - **验收锚点**: requirements A7
 
@@ -48,3 +48,4 @@
 | 日期 | 记录 |
 |---|---|
 | 2026-07-20 | task 创建 |
+| 2026-07-20 | 完成。① `internal/deliver/xds/bootstrap.go`：`BootstrapOpts` + `RenderBootstrap` 纯函数——构造 bootstrapv3.Bootstrap proto（node/admin/dynamic_resources/static_resources.clusters[esgw_xds]，§2.7 骨架）→ PGV Validate 自检 → 复用 static 包确定性 YAML 路径。发射器复用方式选了「导出」而非「提取共享包」：static 包新增导出 `MarshalYAML`（protojson→map→确定性 YAML），static.Render 重构为调用它，xds 直接复用，零代码搬移、改动最小。② `cmd/esgw/bootstrap.go`：`esgw bootstrap -c <esgw.yaml> [--mode xds] [-o <file>]`，--mode 仅接受 xds（static 报用法错误 exit 2），输出契约同 compile；main.go 分发 + usage 更新。③ 测试：单测覆盖默认值/unix+tcp admin/字节级确定性/非法 AdminAddress+XDSListen 报错/关键字段断言/文件头；golden 快照 `testdata/bootstrap-xds/`（esgw.yaml + want-bootstrap.yaml）纳入 internal/golden 体系（沿用 -update，`make golden-update` 覆盖）；产物经真实 Envoy v1.37.5（docker 镜像）`--mode validate` 实测通过（包内 TestRenderBootstrapEnvoyValidate 复用 envoycheck，无二进制按既有约定 skip）。commit：`d7c9c79`（static）、`dae9d76`（xds）、`b2a9895`（cmd）、`eb49acc`（test）；`make build test lint` 全绿。取舍：a) 文件头写 `# node_id:` 不写 config_version（任务书已定：bootstrap 与配置版本无关）；b) `lb_policy: ROUND_ROBIN` 等枚举零值被 protojson 省略，产物与 §2.7 骨架字面有出入但语义等价（Envoy 默认即 ROUND_ROBIN），与 static 产物「零值不输出」风格一致——见决议记录；c) `unix:///` 前缀剥离后须补回前导 `/`（scheme 后是绝对路径），实现中发现并修正；d) NodeID/NodeCluster 空值兜底默认 esgw-node/esgw（与 config 默认值保持一致，库形态直调可用），AdminAddress/XDSListen 必填、形态非法即报错（loopback 安全校验归 config 层） |
