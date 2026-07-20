@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/linkinghack/envoy-standalone-gateway/internal/compile"
@@ -20,44 +22,102 @@ type Publisher struct {
 	Store   *store.Store
 	Deliver deliver.Deliverer
 	Mode    compile.Mode
+	mu      sync.Mutex
 }
 
 // PublishResult describes a successfully accepted or failed publish attempt.
 type PublishResult struct {
 	Seq       int64
+	RunID     int64
 	IRVersion string
 	State     string
 	IR        *ir.IR
 }
 
-// Publish validates the current filesystem draft, snapshots it, then applies
-// the compiled IR. A failed delivery remains recorded as a failed version.
+var (
+	// ErrPublishActive indicates another non-terminal publish is in progress.
+	ErrPublishActive = errors.New("conf: another publish is already active")
+	// ErrDraftChanged indicates an optimistic-concurrency base hash mismatch.
+	ErrDraftChanged = errors.New("conf: draft changed since it was read")
+)
+
+// Publish is the convenience form without an optimistic-concurrency token.
 func (p *Publisher) Publish(ctx context.Context, author, message string) (PublishResult, error) {
+	res, err := p.PublishWithBase(ctx, author, message, "")
+	if err != nil || res.RunID == 0 {
+		return res, err
+	}
+	if err := p.Confirm(ctx, res.RunID, res.IRVersion); err != nil {
+		return res, err
+	}
+	res.State = "effective"
+	return res, nil
+}
+
+// PublishWithBase validates the current filesystem draft, snapshots it, and
+// applies the compiled IR while durably advancing the publish-run state machine.
+// A successful delivery is CONFIRMING; M-STATE (or Confirm) moves it to EFFECTIVE.
+func (p *Publisher) PublishWithBase(ctx context.Context, author, message, baseHash string) (PublishResult, error) {
 	if p == nil || p.Store == nil || p.Deliver == nil {
 		return PublishResult{}, errors.New("publisher requires store and deliverer")
 	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	draft, loadErrs, err := LoadDraft(p.DataDir)
 	if err != nil {
 		return PublishResult{}, err
 	}
+	if baseHash != "" && baseHash != draft.Hash {
+		return PublishResult{}, fmt.Errorf("%w: want %s, current %s", ErrDraftChanged, baseHash, draft.Hash)
+	}
+	run := store.PublishRun{TriggerBy: author, BaseHash: draft.Hash, State: "VALIDATING"}
+	run.ID, err = p.Store.CreatePublishRun(ctx, run)
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "unique") || strings.Contains(strings.ToLower(err.Error()), "constraint") {
+			return PublishResult{}, ErrPublishActive
+		}
+		return PublishResult{}, fmt.Errorf("create publish run: %w", err)
+	}
+	failRun := func(state string, cause error) error {
+		run.State = state
+		if run.ErrorsJSON == "" || run.ErrorsJSON == "[]" {
+			run.ErrorsJSON = marshalErrors([]string{cause.Error()})
+		}
+		run.UpdatedAt = time.Now().UTC()
+		_ = p.Store.UpdatePublishRun(ctx, run)
+		return cause
+	}
 	if len(loadErrs) != 0 {
-		return PublishResult{}, fmt.Errorf("draft validation failed: %d error(s)", len(loadErrs))
+		return PublishResult{}, failRun("VALIDATE_FAILED", fmt.Errorf("draft validation failed: %d error(s)", len(loadErrs)))
 	}
 	if draft.Config == nil {
-		return PublishResult{}, errors.New("native.yaml publish is not supported yet")
+		return PublishResult{}, failRun("VALIDATE_FAILED", errors.New("native.yaml publish is not supported yet"))
 	}
 	out, compileErrs := compile.Compile(draft.Config, compile.Options{Mode: p.Mode})
+	if len(compileErrs) != 0 {
+		run.ErrorsJSON = marshalCompileErrors(compileErrs)
+	}
 	for _, e := range compileErrs {
 		if e.Severity == compile.SeverityError {
-			return PublishResult{}, fmt.Errorf("compile failed: %s", e.Message)
+			return PublishResult{}, failRun("VALIDATE_FAILED", fmt.Errorf("compile failed: %s", e.Message))
 		}
 	}
 	if out == nil {
-		return PublishResult{}, errors.New("compile returned no IR")
+		return PublishResult{}, failRun("VALIDATE_FAILED", errors.New("compile returned no IR"))
+	}
+	run.State = "VALIDATED"
+	run.UpdatedAt = time.Now().UTC()
+	if err := p.Store.UpdatePublishRun(ctx, run); err != nil {
+		return PublishResult{}, err
 	}
 	seq, err := p.Store.NextVersionSeq(ctx)
 	if err != nil {
-		return PublishResult{}, fmt.Errorf("reserve version: %w", err)
+		return PublishResult{}, failRun("PUBLISH_FAILED", fmt.Errorf("reserve version: %w", err))
+	}
+	run.VersionSeq, run.State = seq, "PUBLISHING"
+	run.UpdatedAt = time.Now().UTC()
+	if err := p.Store.UpdatePublishRun(ctx, run); err != nil {
+		return PublishResult{}, err
 	}
 	now := time.Now().UTC()
 	meta := SnapshotMeta{
@@ -70,7 +130,7 @@ func (p *Publisher) Publish(ctx context.Context, author, message string) (Publis
 		},
 	}
 	if _, err := Snapshot(p.DataDir, seq, meta); err != nil {
-		return PublishResult{}, err
+		return PublishResult{}, failRun("PUBLISH_FAILED", err)
 	}
 	stats, _ := json.Marshal(meta.Stats)
 	v := store.Version{
@@ -79,16 +139,62 @@ func (p *Publisher) Publish(ctx context.Context, author, message string) (Publis
 		StatsJSON: string(stats),
 	}
 	if err := p.Store.InsertVersion(ctx, v); err != nil {
-		return PublishResult{}, fmt.Errorf("record version: %w", err)
+		return PublishResult{}, failRun("PUBLISH_FAILED", fmt.Errorf("record version: %w", err))
 	}
 	if err := p.Deliver.Apply(ctx, out); err != nil {
 		v.State = "failed"
 		_ = p.Store.InsertVersion(ctx, v)
-		return PublishResult{Seq: seq, IRVersion: out.Version, State: "failed", IR: out}, err
+		_ = failRun("PUBLISH_FAILED", err)
+		return PublishResult{Seq: seq, RunID: run.ID, IRVersion: out.Version, State: "failed", IR: out}, err
+	}
+	v.State = "confirming"
+	if err := p.Store.InsertVersion(ctx, v); err != nil {
+		return PublishResult{}, failRun("PUBLISH_FAILED", fmt.Errorf("record confirming version: %w", err))
+	}
+	run.State = "CONFIRMING"
+	run.UpdatedAt = time.Now().UTC()
+	if err := p.Store.UpdatePublishRun(ctx, run); err != nil {
+		return PublishResult{}, err
+	}
+	return PublishResult{Seq: seq, RunID: run.ID, IRVersion: out.Version, State: "confirming", IR: out}, nil
+}
+
+// Confirm marks a delivered run effective after M-STATE observes its IR version.
+func (p *Publisher) Confirm(ctx context.Context, runID int64, observedIRVersion string) error {
+	if p == nil || p.Store == nil {
+		return errors.New("publisher requires store")
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	run, err := p.Store.GetPublishRun(ctx, runID)
+	if err != nil {
+		return err
+	}
+	if run.State != "CONFIRMING" {
+		return fmt.Errorf("publish run %d is %s, want CONFIRMING", runID, run.State)
+	}
+	v, err := p.Store.GetVersion(ctx, run.VersionSeq)
+	if err != nil {
+		return err
+	}
+	if observedIRVersion != v.IRVersion {
+		return fmt.Errorf("confirm version mismatch: observed %s, want %s", observedIRVersion, v.IRVersion)
 	}
 	v.State = "effective"
 	if err := p.Store.InsertVersion(ctx, v); err != nil {
-		return PublishResult{}, fmt.Errorf("record effective version: %w", err)
+		return err
 	}
-	return PublishResult{Seq: seq, IRVersion: out.Version, State: "effective", IR: out}, nil
+	run.State = "EFFECTIVE"
+	run.UpdatedAt = time.Now().UTC()
+	return p.Store.UpdatePublishRun(ctx, run)
+}
+
+func marshalErrors(values []string) string {
+	b, _ := json.Marshal(values)
+	return string(b)
+}
+
+func marshalCompileErrors(values []compile.CompileError) string {
+	b, _ := json.Marshal(values)
+	return string(b)
 }

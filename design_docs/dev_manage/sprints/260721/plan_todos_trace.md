@@ -5,6 +5,8 @@
 | T1 | M-STORE SQLite migration 与基础 CRUD | 已完成 | store 单测、build/test/lint |
 | T2 | M-CONF 草稿加载与 draftHash | 已完成 | conf 单测 |
 | T3 | 版本快照与最小发布编排、冲刺收口 | 已完成 | 快照/发布单测、全量检查 |
+| T4 | 发布运行状态机基础（publish_runs、baseHash、CONFIRMING/EFFECTIVE） | 已完成 | conf/store 单测、全量检查 |
+| T5 | 原生 static → IR 解析、diff/回滚、fsnotify | 待开始 | 后续拆分 |
 
 ## 冲刺日志
 
@@ -16,3 +18,4 @@
 | 2026-07-20 | T2 完成：`internal/conf.LoadDraft`、抽象/native 互斥检测、确定性 `DraftHash` |
 | 2026-07-20 | T3 完成：`conf.Snapshot` 临时目录 + rename 原子快照、`meta.json`；`make build test lint` 全绿 |
 | 2026-07-20 | 补充最小 `conf.Publisher.Publish`：草稿加载→Compile→版本快照→Deliverer.Apply→effective/failed 留痕；native/diff/rollback/fsnotify 仍后续拆分 |
+| 2026-07-20 | T4 完成：publish_runs 增加 version_seq/trigger_by 与读写 API；Publisher 增加 PublishWithBase 乐观并发、VALIDATING→VALIDATED→PUBLISHING→CONFIRMING→EFFECTIVE 状态推进、Confirm 生效确认；保留 Publish 兼容包装；新增冲突/生命周期单测 |

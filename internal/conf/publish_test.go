@@ -69,6 +69,54 @@ func TestPublisherPublishAndFailure(t *testing.T) {
 	}
 }
 
+func TestPublisherPublishWithBaseAndConfirm(t *testing.T) {
+	data := t.TempDir()
+	if err := writeMinimalDraft(data); err != nil {
+		t.Fatal(err)
+	}
+	st, err := store.Open(filepath.Join(data, "esgw.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = st.Close() }()
+	hash, err := DraftHash(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub := &Publisher{DataDir: data, Store: st, Deliver: &fakeDeliver{}, Mode: compile.ModeXDS}
+	res, err := pub.PublishWithBase(context.Background(), "test", "confirm me", hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.State != "confirming" || res.RunID == 0 {
+		t.Fatalf("result=%+v", res)
+	}
+	if err := pub.Confirm(context.Background(), res.RunID, res.IRVersion); err != nil {
+		t.Fatal(err)
+	}
+	run, err := st.GetPublishRun(context.Background(), res.RunID)
+	if err != nil || run.State != "EFFECTIVE" {
+		t.Fatalf("run=%+v err=%v", run, err)
+	}
+}
+
+func TestPublisherBaseHashConflict(t *testing.T) {
+	data := t.TempDir()
+	if err := writeMinimalDraft(data); err != nil {
+		t.Fatal(err)
+	}
+	st, err := store.Open(filepath.Join(data, "esgw.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = st.Close() }()
+	pub := &Publisher{DataDir: data, Store: st, Deliver: &fakeDeliver{}, Mode: compile.ModeXDS}
+	_, err = pub.PublishWithBase(context.Background(), "test", "conflict", "stale")
+	if !errors.Is(err, ErrDraftChanged) {
+		t.Fatalf("err=%v, want ErrDraftChanged", err)
+	}
+}
+
 func writeMinimalDraft(data string) error {
 	if err := os.MkdirAll(filepath.Join(data, "config.d"), 0o700); err != nil {
 		return err

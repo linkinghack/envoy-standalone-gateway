@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -25,6 +26,20 @@ type Version struct {
 	ParentSeq  int64
 	RollbackOf int64
 	StatsJSON  string
+}
+
+// PublishRun is the durable record of one publish state-machine execution.
+// Error and diff payloads are JSON kept opaque to M-STORE.
+type PublishRun struct {
+	ID         int64
+	VersionSeq int64
+	TriggerBy  string
+	BaseHash   string
+	State      string
+	ErrorsJSON string
+	DiffJSON   string
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
 }
 
 // Store owns one SQLite database connection.
@@ -90,6 +105,8 @@ CREATE TABLE IF NOT EXISTS versions (
 );
 CREATE TABLE IF NOT EXISTS publish_runs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  version_seq INTEGER,
+  trigger_by TEXT NOT NULL DEFAULT '',
   state TEXT NOT NULL,
   base_hash TEXT NOT NULL DEFAULT '',
   errors_json TEXT NOT NULL DEFAULT '[]',
@@ -142,7 +159,21 @@ CREATE TABLE IF NOT EXISTS certificates (
 			return fmt.Errorf("record schema migration: %w", err)
 		}
 	}
+	// S3's first migration predated version_seq/trigger_by. Keep upgrades
+	// additive so an existing data directory remains usable.
+	for _, alter := range []string{
+		"ALTER TABLE publish_runs ADD COLUMN version_seq INTEGER",
+		"ALTER TABLE publish_runs ADD COLUMN trigger_by TEXT NOT NULL DEFAULT ''",
+	} {
+		if _, err := s.db.ExecContext(ctx, alter); err != nil && !isDuplicateColumn(err) {
+			return fmt.Errorf("upgrade publish_runs: %w", err)
+		}
+	}
 	return nil
+}
+
+func isDuplicateColumn(err error) bool {
+	return err != nil && (strings.Contains(err.Error(), "duplicate column") || strings.Contains(err.Error(), "already exists"))
 }
 
 // GetSetting returns a setting, or (false, nil) when it is absent.
@@ -229,4 +260,80 @@ FROM versions WHERE seq = ?`, seq).Scan(
 		return Version{}, fmt.Errorf("parse version created_at: %w", err)
 	}
 	return v, nil
+}
+
+// CreatePublishRun inserts a new run. SQLite's one_active_publish partial
+// index turns concurrent active submissions into a deterministic constraint
+// error for the caller to report as a conflict.
+func (s *Store) CreatePublishRun(ctx context.Context, r PublishRun) (int64, error) {
+	now := time.Now().UTC()
+	if r.CreatedAt.IsZero() {
+		r.CreatedAt = now
+	}
+	if r.UpdatedAt.IsZero() {
+		r.UpdatedAt = r.CreatedAt
+	}
+	if r.ErrorsJSON == "" {
+		r.ErrorsJSON = "[]"
+	}
+	if r.DiffJSON == "" {
+		r.DiffJSON = "{}"
+	}
+	res, err := s.db.ExecContext(ctx, `INSERT INTO publish_runs
+		(version_seq,trigger_by,state,base_hash,errors_json,diff_json,created_at,updated_at)
+		VALUES(?,?,?,?,?,?,?,?)`, nullSeq(r.VersionSeq), r.TriggerBy, r.State, r.BaseHash,
+		r.ErrorsJSON, r.DiffJSON, r.CreatedAt.Format(time.RFC3339Nano), r.UpdatedAt.Format(time.RFC3339Nano))
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+// UpdatePublishRun updates the mutable state and payload of a run.
+func (s *Store) UpdatePublishRun(ctx context.Context, r PublishRun) error {
+	if r.ID <= 0 {
+		return errors.New("publish run id must be positive")
+	}
+	if r.UpdatedAt.IsZero() {
+		r.UpdatedAt = time.Now().UTC()
+	}
+	_, err := s.db.ExecContext(ctx, `UPDATE publish_runs SET
+		version_seq=?, trigger_by=?, state=?, base_hash=?, errors_json=?, diff_json=?, updated_at=?
+		WHERE id=?`, nullSeq(r.VersionSeq), r.TriggerBy, r.State, r.BaseHash, r.ErrorsJSON,
+		r.DiffJSON, r.UpdatedAt.Format(time.RFC3339Nano), r.ID)
+	return err
+}
+
+// GetPublishRun loads a run by id.
+func (s *Store) GetPublishRun(ctx context.Context, id int64) (PublishRun, error) {
+	var r PublishRun
+	var version sql.NullInt64
+	var created, updated string
+	err := s.db.QueryRowContext(ctx, `SELECT id,version_seq,trigger_by,state,base_hash,
+		errors_json,diff_json,created_at,updated_at FROM publish_runs WHERE id=?`, id).Scan(
+		&r.ID, &version, &r.TriggerBy, &r.State, &r.BaseHash, &r.ErrorsJSON, &r.DiffJSON,
+		&created, &updated)
+	if err != nil {
+		return PublishRun{}, err
+	}
+	if version.Valid {
+		r.VersionSeq = version.Int64
+	}
+	var parseErr error
+	r.CreatedAt, parseErr = time.Parse(time.RFC3339Nano, created)
+	if parseErr != nil {
+		return PublishRun{}, parseErr
+	}
+	r.UpdatedAt, parseErr = time.Parse(time.RFC3339Nano, updated)
+	if parseErr != nil {
+		return PublishRun{}, parseErr
+	}
+	return r, nil
+}
+
+func nullSeq(seq int64) any {
+	if seq == 0 {
+		return nil
+	}
+	return seq
 }

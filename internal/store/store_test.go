@@ -81,3 +81,29 @@ func TestActivePublishUniqueIndex(t *testing.T) {
 		t.Fatalf("publish rows = %d", n)
 	}
 }
+
+func TestPublishRunLifecycle(t *testing.T) {
+	ctx := context.Background()
+	s, err := Open(filepath.Join(t.TempDir(), "esgw.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+	id, err := s.CreatePublishRun(ctx, PublishRun{TriggerBy: "alice", BaseHash: "h1", State: "VALIDATING"})
+	if err != nil || id == 0 {
+		t.Fatalf("create run id=%d err=%v", id, err)
+	}
+	got, err := s.GetPublishRun(ctx, id)
+	if err != nil || got.TriggerBy != "alice" || got.State != "VALIDATING" {
+		t.Fatalf("run=%+v err=%v", got, err)
+	}
+	got.State = "EFFECTIVE"
+	got.VersionSeq = 3
+	if err := s.UpdatePublishRun(ctx, got); err != nil {
+		t.Fatal(err)
+	}
+	got, err = s.GetPublishRun(ctx, id)
+	if err != nil || got.State != "EFFECTIVE" || got.VersionSeq != 3 {
+		t.Fatalf("updated run=%+v err=%v", got, err)
+	}
+}
