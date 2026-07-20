@@ -198,7 +198,7 @@ M0 CLI 即 `esgw compile -f dir/ --mode static -o envoy.yaml` 对该函数的薄
 
 | # | 事项 | 计划 |
 |---|---|---|
-| C1 | `envoyPatch` 的 `target` 取值全集与 per-rule 定位语法（rules 无 name，用下标还是可选 name 字段） | M0 编码期定，倾向给 rule 加可选 `name` |
+| C1 | ~~`envoyPatch` 的 `target` 取值全集与 per-rule 定位语法~~ **已决议（2026-07-19，Sprint 260719 T5）**：target 按对象 kind 定表——Listener→`listener`/`secret`；Route→`virtualHost`/`route`（rule 级须写作 `route/<ruleName>`）；Upstream→`cluster`/`endpoints`；Gateway→`bootstrap` 不允许（C2 留 M1，Gateway 任何 envoyPatch 均报错）。rule 级定位采用给 rule 加可选 `name` 字段（Route 内唯一、字符集同 metadata.name，F1 loader 校验）；无 `name` 的 rule 不可被 rule 级 patch 定位。实现见 `internal/compile/patch.go`（`patchTargets` 定表）与 `internal/protocol/route.go` | 已定 |
 | C2 | EnvoyResources 中 Bootstrap 级字段（如 overload manager）是否允许 patch | M1 前定；v0 先只允许资源级 |
 | C3 | ~~JSON Schema 生成工具选型（invopop/jsonschema vs 手写）~~ **已决议（2026-07-19，Sprint 260719 T2）**：invopop/jsonschema 由 Go 类型生成 + `JSONSchema()` 类型钩子处理 union/Duration/枚举，单一事实来源；bundle 见 `internal/protocol/schema.go` 的 `Schemas()` | 已定 |
 | C4 | ~~jwt providers 聚合去重的 key 规则（issuer+jwks 相同视为同 provider？）~~ **已决议（2026-07-19，Sprint 260719 T4）**：去重键 = `issuer + "|" + 规范化 jwks 来源`（`uri:` + TrimSpace(uri) 或 `file:` + file），同 issuer+jwks 视为同一 provider；audiences 不参与去重，经 requirement_map 的 `provider_and_audiences` 表达；provider 名内容寻址 `jwt/<sha256(key) 前 8 位 hex>`；`jwt.optional=true` → requirement `allow-missing`。实现见 `internal/compile/build_policy.go`（`jwtProviderKey`） | 已定 |
