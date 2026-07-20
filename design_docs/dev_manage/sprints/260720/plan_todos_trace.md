@@ -29,6 +29,7 @@
 | 2026-07-20 | T3 完成：internal/deliver Deliverer 接口与状态事件模型、xds ADS server（ACK/NACK 跟踪、事件 fan-out）、internal/core RunServe 与 esgw serve 命令；commit `3987962`（deliver）、`ccd30e9`（xds）、`3051d49`（core,cmd）；`make build test lint` 全绿，deliver/xds 与 core 过 -race |
 | 2026-07-20 | T4 完成：xds.RenderBootstrap 纯函数（§2.7 骨架 proto → PGV 自检 → 复用 static 确定性 YAML 路径，发射器导出为 static.MarshalYAML）+ esgw bootstrap 命令 + bootstrap-xds golden；产物经真实 Envoy v1.37.5 `--mode validate` 实测通过；commit `d7c9c79`（static）、`dae9d76`（xds）、`b2a9895`（cmd）、`eb49acc`（test）；`make build test lint` 全绿 |
 | 2026-07-20 | T5 完成：e2e/xds ADS 场景落地（共享 netns pod 形态、S1 输入零改写、scratch 容器跑静态 esgw 二进制），A2/A3/A4/A5/A7 断言脚本化并本地全过（envoyproxy/envoy:v1.39.0）；serve 增加 -log-level 开关；make e2e-xds + CI e2e-xds job；`make build test lint` + static e2e + ADS e2e 本地全绿，A1~A8 逐项核验见下表，M0 验收第 ③ 项闭环；commit `1c2ae0f`（cmd）、`72c947e`（e2e）、`95f7b25`（ci）、docs 收口见后续提交；远端 CI 待推送确认。实现取舍 5 条（A4 比较口径、共享 netns 拓扑、EDS 无 version_info、-log-level、adminAddress 形态）见决议记录 |
+| 2026-07-20 | A8 收口：推送后远端 CI run 29725492294 五 job（build-test-lint/licenses/validate-matrix/e2e/e2e-xds）全部 success；A1~A8 全部「已核验」，冲刺关闭 |
 
 ## 决议记录（冲刺内产生的设计决策）
 
@@ -58,4 +59,4 @@
 | A5 | ACK 可见 + NACK 单测（不重推） | 已核验（T3 单测层 + T5 e2e 日志层） | 单测：internal/deliver/xds/server_test.go TestNACK（commit `ccd30e9`）；e2e：e2e/xds/run.sh A5 断言——esgw 以 -log-level debug 启动，日志可见五类型 `xds: ACK received`（version=4ba6bf6b0638） |
 | A6 | 幂等跳过 | 已核验（T3 单测层） | internal/deliver/xds/server_test.go TestApplyIdempotentSkip：重复 Apply 同 IR 成功、客户端 500ms 内无新推送、Status 不变、无重复 Applied 事件；commit `ccd30e9` |
 | A7 | bootstrap 导出被真实 Envoy 接受 + 非 loopback 硬校验 | 已核验（T1 硬校验 + T4 单测层 + T5 e2e 真实 Envoy 层） | 单测层证据见 T4 记录（commit `dae9d76`、`eb49acc`）；e2e：e2e/xds/run.sh A7 断言——真实 Envoy v1.39.0 以 `bin/esgw bootstrap` 导出的接入 bootstrap 启动、admin /ready=LIVE 并承接流量 |
-| A8 | CI 全绿、本地可复现 | 本地已核验（2026-07-20 make build/test/lint + static e2e + ADS e2e 全绿）；远端 CI 待推送确认 | CI 新增 e2e-xds job（.github/workflows/ci.yaml）；本地实跑记录见 T5 进展记录 |
+| A8 | CI 全绿、本地可复现 | ✅ 已核验（2026-07-20：本地 make build/test/lint + static e2e + ADS e2e 全绿；推送后远端 CI run 29725492294 五 job 全 success） | CI 新增 e2e-xds job（.github/workflows/ci.yaml）；远端：build-test-lint/licenses/validate-matrix/e2e/e2e-xds 全绿；本地实跑记录见 T5 进展记录 |
