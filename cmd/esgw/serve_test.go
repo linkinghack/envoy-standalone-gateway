@@ -44,6 +44,18 @@ func TestServeMissingConfig(t *testing.T) {
 	}
 }
 
+// TestServeInvalidLogLevel 覆盖非法 -log-level：exit 2（用法错误）。
+func TestServeInvalidLogLevel(t *testing.T) {
+	code, _, stderr := runCLI(t, "serve",
+		"-c", "x.yaml", "-f", "testdata/ok", "-log-level", "verbose")
+	if code != 2 {
+		t.Fatalf("invalid -log-level: exit = %d, want 2", code)
+	}
+	if !strings.Contains(stderr, "invalid -log-level") {
+		t.Fatalf("missing -log-level error line:\n%s", stderr)
+	}
+}
+
 // TestServeStaticMode 覆盖 SD2：deliver.mode=static → 明确报
 // 「static 运行时下发未实现（S7）」exit 1。
 func TestServeStaticMode(t *testing.T) {

@@ -31,6 +31,7 @@ func runServe(args []string, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	cfgPath := fs.String("c", "", "esgw.yaml config file (required)")
 	dir := fs.String("f", "", "gateway config directory (required)")
+	logLevel := fs.String("log-level", "info", "log level: debug | info | warn | error")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -43,13 +44,21 @@ func runServe(args []string, stderr io.Writer) int {
 		return 2
 	}
 
+	// -log-level 默认 info；e2e 需要观测 ACK 日志（Debug 级，T3 级别取舍）
+	// 时以 -log-level debug 启动。
+	var level slog.Level
+	if err := level.UnmarshalText([]byte(*logLevel)); err != nil {
+		eprintf(stderr, "error: invalid -log-level %q (want debug|info|warn|error)\n", *logLevel)
+		return 2
+	}
+
 	cfg, err := config.LoadFile(*cfgPath)
 	if err != nil {
 		eprintf(stderr, "error: load esgw.yaml: %v\n", err)
 		return 1
 	}
 
-	log := slog.New(slog.NewTextHandler(stderr, nil))
+	log := slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{Level: level}))
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
