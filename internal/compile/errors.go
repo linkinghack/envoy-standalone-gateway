@@ -3,6 +3,7 @@ package compile
 import (
 	"fmt"
 
+	"github.com/linkinghack/envoy-standalone-gateway/internal/ir"
 	"github.com/linkinghack/envoy-standalone-gateway/internal/protocol"
 )
 
@@ -28,27 +29,9 @@ const (
 	SeverityWarning Severity = "Warning" // 如 F7 缺 envoy 二进制
 )
 
-// SourceRef 把一条编译错误回指到用户 YAML：文件、对象（kind/name）与字段路径
-// （如 spec.rules[2].retry.on）。UI 据此在 YAML 编辑器行内标注（编译层 §4，FR-4.2）。
-type SourceRef struct {
-	File string        // 源文件路径（空 = 隐式对象，如编译期补全的默认 Gateway）
-	Kind protocol.Kind // 对象类别
-	Name string        // metadata.name
-	Path string        // YAML 字段路径；空 = 指整个对象
-}
-
-// String 返回 SourceRef 的可读形式。
-func (r SourceRef) String() string {
-	loc := r.File
-	if loc == "" {
-		loc = "<implicit>"
-	}
-	s := fmt.Sprintf("%s %s/%s", loc, r.Kind, r.Name)
-	if r.Path != "" {
-		s += ": " + r.Path
-	}
-	return s
-}
+// SourceRef 把一条编译错误回指到用户 YAML（定义见 internal/ir，此处别名复用，
+// 使 IR.SourceMap 与 CompileError 共用同一类型，编译层 §1/§4）。
+type SourceRef = ir.SourceRef
 
 // CompileError 是编译层统一错误模型（编译层 §4）。
 // 同阶段收集不中断（collect, don't abort），阶段间失败短路。
@@ -85,6 +68,31 @@ func buildError(origin protocol.Origin, kind protocol.Kind, name, path, format s
 		Stage:    StageBuild,
 		Source:   srcRef(origin, kind, name, path),
 		Message:  fmt.Sprintf(format, args...),
+		Severity: SeverityError,
+	}
+}
+
+// patchError 构造一条 F4（patch 阶段，含 F5 形态化暴露的 patch 后果）错误。
+func patchError(origin protocol.Origin, kind protocol.Kind, name, path, format string, args ...any) CompileError {
+	return CompileError{
+		Stage:    StagePatch,
+		Source:   srcRef(origin, kind, name, path),
+		Message:  fmt.Sprintf(format, args...),
+		Severity: SeverityError,
+	}
+}
+
+// validateError 构造一条 F6（validate 阶段）错误：带资源标识，并经 SourceMap 回指
+// 用户对象；资源无溯源（如 EnvoyResources 合并前的中间态）时退化为裸资源名。
+func validateError(out *ir.IR, key ir.ResourceKey, format string, args ...any) CompileError {
+	src, ok := out.SourceMap[key]
+	if !ok {
+		src = ir.SourceRef{Name: key.Name}
+	}
+	return CompileError{
+		Stage:    StageValidate,
+		Source:   src,
+		Message:  fmt.Sprintf("%s: %s", key, fmt.Sprintf(format, args...)),
 		Severity: SeverityError,
 	}
 }

@@ -85,9 +85,9 @@ func TestCertificates(t *testing.T) {
 	})
 }
 
-// TestCompileSkeleton 覆盖 Compile() 骨架：F2 错误短路（不进 build）；
-// F2 通过后返回 build 阶段未实现占位错误。
-func TestCompileSkeleton(t *testing.T) {
+// TestCompilePipeline 覆盖 Compile() 全流水线：F2 错误短路（不进 build）；
+// F2 通过后 F1~F6 全流水线产出合法 IR（static 模式：route_config 内联、证书回写）。
+func TestCompilePipeline(t *testing.T) {
 	t.Run("link errors short-circuit", func(t *testing.T) {
 		cs := &protocol.ConfigSet{
 			Routes:    []*protocol.Route{newHTTPRoute("r1", []string{"ghost"}, nil, "app")},
@@ -102,7 +102,7 @@ func TestCompileSkeleton(t *testing.T) {
 		}
 	})
 
-	t.Run("F2 pass yields build placeholder", func(t *testing.T) {
+	t.Run("full pipeline yields IR", func(t *testing.T) {
 		dir := t.TempDir()
 		cert, key := writeSelfSignedCert(t, dir, "www", "www.example.com")
 		cs := &protocol.ConfigSet{
@@ -115,12 +115,24 @@ func TestCompileSkeleton(t *testing.T) {
 			},
 			Upstreams: []*protocol.Upstream{newUpstream("app")},
 		}
-		got, errs := Compile(cs, Options{Mode: ModeStatic})
-		if got != nil {
-			t.Fatalf("IR = %v, want nil (F3+ placeholder)", got)
+		out, errs := Compile(cs, Options{Mode: ModeStatic})
+		assertNoErrs(t, errs)
+		if out == nil {
+			t.Fatal("IR = nil")
 		}
-		if len(errs) != 1 || errs[0].Stage != StageBuild {
-			t.Fatalf("want exactly one build-stage placeholder error, got:\n%s", formatErrs(errs))
+		if len(out.Version) != 12 {
+			t.Fatalf("Version = %q, want 12 hex chars", out.Version)
+		}
+		if len(out.Listeners) != 2 || out.Clusters["us/app"] == nil {
+			t.Fatalf("unexpected IR collections: listeners=%d clusters=%d", len(out.Listeners), len(out.Clusters))
+		}
+		// static 形态：route_config 内联（IR.Routes 为空）、证书回写（IR.Secrets 为空）、端点内联。
+		if len(out.Routes) != 0 || len(out.Secrets) != 0 || len(out.Endpoints) != 0 {
+			t.Fatalf("static mode should inline: routes=%d secrets=%d endpoints=%d",
+				len(out.Routes), len(out.Secrets), len(out.Endpoints))
+		}
+		if out.Bootstrap == nil || out.Bootstrap.GetNode().GetId() == "" {
+			t.Fatal("Bootstrap skeleton missing")
 		}
 	})
 }

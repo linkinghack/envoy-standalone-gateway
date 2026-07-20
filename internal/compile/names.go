@@ -1,5 +1,7 @@
 package compile
 
+import "strconv"
+
 // 资源命名规约（编译层 §5，硬约束）：
 // lis/<listener>、rc/<listener>、vh/<route>、us/<upstream>、crt/<listener>/<n>。
 // 「/」分隔避免与用户 name 字符集冲突；前缀短因其出现在 stats 名中
@@ -17,6 +19,11 @@ func virtualHostName(route string) string { return "vh/" + route }
 
 // clusterResourceName 返回 Cluster 资源名。
 func clusterResourceName(upstream string) string { return "us/" + upstream }
+
+// secretResourceName 返回证书 Secret 资源名（xDS 形态 SDS 引用同名）。
+func secretResourceName(listener string, n int) string {
+	return "crt/" + listener + "/" + strconv.Itoa(n)
+}
 
 // Envoy 标准 filter / transport socket / access logger 名。
 // HTTP filter 名同时是 typed_per_filter_config 的 key（编译层 §3 策略表）。
