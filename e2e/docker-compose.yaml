@@ -1,0 +1,42 @@
+# e2e S1 真实流量冒烟（编译层 §8.4，验收 A3）：
+# envoy（加载由 testdata/s1/want-static.yaml 派生的配置）+ 两个 http-echo 后端。
+# 由 run.sh 驱动，勿直接 docker compose up（配置需先生成）。
+#
+# 后端用固定 IP（envoy STATIC cluster 只接受 IP，不接受主机名），并让
+# http-echo 监听 S1 输入中的原端口（www:3000 / blog:4000），派生配置只需
+# 把 127.0.0.1 替换为对应固定 IP（见 run.sh）。
+services:
+  envoy:
+    image: ${ENVOY_IMAGE:?ENVOY_IMAGE is required (set by e2e/run.sh)}
+    command: ["-c", "/etc/envoy/envoy.yaml"]
+    volumes:
+      - ./generated/envoy.yaml:/etc/envoy/envoy.yaml:ro
+      - ../testdata/certs:/etc/esgw/certs:ro
+    ports:
+      - "${E2E_HTTP_PORT:-18080}:80"
+      - "${E2E_HTTPS_PORT:-18443}:443"
+    networks:
+      e2e:
+        ipv4_address: 172.30.0.10
+    depends_on:
+      - www
+      - blog
+  www:
+    image: hashicorp/http-echo
+    command: ["-listen=:3000", "-text=www-backend"]
+    networks:
+      e2e:
+        ipv4_address: 172.30.0.11
+  blog:
+    image: hashicorp/http-echo
+    command: ["-listen=:4000", "-text=blog-backend"]
+    networks:
+      e2e:
+        ipv4_address: 172.30.0.12
+
+networks:
+  e2e:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
