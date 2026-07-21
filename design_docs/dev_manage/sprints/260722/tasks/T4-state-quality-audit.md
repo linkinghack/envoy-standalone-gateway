@@ -15,15 +15,16 @@
 - EDS 版本从确认一致性判断中排除；
 - `Publisher.AttachState` 自动消费确认事件并推进发布状态；
 - admin 请求串行化、按端点 singleflight、指数失败退避、启动期 ready 探测；
+- singleflight 等待者独立取消、退避 1s→60s 递增/封顶及成功复位；
 - S1~S3 高风险入口的回归测试（native inline resources、rollback force guard、SnapshotJSON、ValidateIR、active publish query）。
+- `RollbackPublish` 完整恢复/发布/版本血缘、watch polling 变更与取消、SQLite migration failure 故障注入；
 - 全量 `go test`、`go test -race`、`golangci-lint` 通过。
 
-## 待完成
+## 后续边界
 
-1. 对 worker/singleflight/退避增加更多时序、取消和并发测试；
-2. Store/conf 剩余低覆盖路径（`RollbackPublish`、migration failure、watch polling）增加故障注入测试；
-3. 接入 M-API 后进行鉴权、REST 和 UI 集成验收。
+- M-API 鉴权、REST 与 UI 集成属于本 Sprint `requirements.md` 明确的非范围，转入 S5/S6 验收；
+- Envoy 多 minor 版本矩阵继续由 CI `validate-matrix` 门禁承担，不改变 S4 模块完成结论。
 
 ## 当前验收结论
 
-S4 已达到“核心采集与确认能力可用”，但 M-API 集成和少量跨模块故障注入仍未完成；在 T4 完成前不得进入 S5 管理 API 的最终验收。
+S4 已完成：需求列出的只读 admin 访问、状态归一化、版本确认、Stale 保留、时间序列和发布自动确认均有直接测试，T4 审计缺口已补齐，可以进入 S5。
