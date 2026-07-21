@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -44,6 +45,38 @@ func TestServiceSerializesAdminRequests(t *testing.T) {
 	}
 }
 
+func TestServiceSingleflightAllowsWaiterCancellation(t *testing.T) {
+	admin := &blockingAdmin{started: make(chan struct{}), release: make(chan struct{})}
+	service := New("node-1", admin)
+	leaderResult := make(chan error, 1)
+	go func() {
+		_, err := service.get(context.Background(), "/ready")
+		leaderResult <- err
+	}()
+	<-admin.started
+
+	waiterCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := service.get(waiterCtx, "/ready"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled waiter error = %v", err)
+	}
+
+	go func() {
+		time.Sleep(10 * time.Millisecond)
+		close(admin.release)
+	}()
+	body, err := service.get(context.Background(), "/ready")
+	if err != nil || string(body) != "LIVE" {
+		t.Fatalf("waiter body = %q, error = %v", body, err)
+	}
+	if err := <-leaderResult; err != nil {
+		t.Fatalf("leader error = %v", err)
+	}
+	if got := admin.callCount(); got != 1 {
+		t.Fatalf("admin calls = %d, want 1", got)
+	}
+}
+
 func TestServiceFailureBackoff(t *testing.T) {
 	admin := &countingFailAdmin{}
 	service := New("node-1", admin)
@@ -52,6 +85,66 @@ func TestServiceFailureBackoff(t *testing.T) {
 	if got := admin.calls; got != 1 {
 		t.Fatalf("backoff did not suppress retry: calls=%d", got)
 	}
+}
+
+func TestServiceFailureBackoffProgressionCapAndReset(t *testing.T) {
+	service := New("node-1", fakeAdmin{})
+	const path = "/stats?format=json"
+	for wantFailures := 1; wantFailures <= 8; wantFailures++ {
+		before := time.Now()
+		service.recordBackoff(path, io.ErrUnexpectedEOF)
+		service.backoffMu.Lock()
+		got := service.backoff[path]
+		service.backoff[path] = backoffState{failures: got.failures, next: time.Now().Add(-time.Millisecond)}
+		service.backoffMu.Unlock()
+		wantDelay := time.Second << (wantFailures - 1)
+		if wantDelay > time.Minute {
+			wantDelay = time.Minute
+		}
+		actualDelay := got.next.Sub(before)
+		if got.failures != wantFailures || actualDelay < wantDelay || actualDelay > wantDelay+100*time.Millisecond {
+			t.Fatalf("failure %d: state=%+v delay=%v want about %v", wantFailures, got, actualDelay, wantDelay)
+		}
+		if !service.backoffAllowed(path) {
+			t.Fatalf("failure %d: expired backoff should allow retry", wantFailures)
+		}
+	}
+	service.recordBackoff(path, nil)
+	service.backoffMu.Lock()
+	_, exists := service.backoff[path]
+	service.backoffMu.Unlock()
+	if exists || !service.backoffAllowed(path) {
+		t.Fatal("successful request did not reset backoff")
+	}
+}
+
+type blockingAdmin struct {
+	mu      sync.Mutex
+	calls   int
+	started chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func (a *blockingAdmin) Get(ctx context.Context, _ string) ([]byte, error) {
+	a.mu.Lock()
+	a.calls++
+	a.mu.Unlock()
+	a.once.Do(func() { close(a.started) })
+	select {
+	case <-a.release:
+		return []byte("LIVE"), nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func (a *blockingAdmin) Prometheus(context.Context, io.Writer) error { return nil }
+
+func (a *blockingAdmin) callCount() int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.calls
 }
 
 type countingFailAdmin struct {

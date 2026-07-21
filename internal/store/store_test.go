@@ -2,10 +2,29 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
+
+func TestOpenReportsMigrationFailure(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "broken.db")
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`CREATE TABLE publish_runs (id INTEGER PRIMARY KEY)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Open(path); err == nil || !strings.Contains(err.Error(), "run sqlite migration") {
+		t.Fatalf("Open error = %v, want migration failure", err)
+	}
+}
 
 func TestOpenMigrationSettingsAndVersions(t *testing.T) {
 	ctx := context.Background()

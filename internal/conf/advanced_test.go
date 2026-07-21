@@ -72,6 +72,45 @@ func TestDraftWatcher(t *testing.T) {
 	}
 }
 
+func TestDraftWatcherPollingDetectsChangeAndStops(t *testing.T) {
+	data := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(data, "config.d"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(data, "config.d", "a.yaml")
+	if err := os.WriteFile(path, []byte("one\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	changes := make(chan string, 1)
+	errs := make(chan error, 1)
+	done := make(chan struct{})
+	go func() {
+		(DraftWatcher{DataDir: data}).poll(ctx, 5*time.Millisecond, changes, errs)
+		close(done)
+	}()
+	time.Sleep(15 * time.Millisecond)
+	if err := os.WriteFile(path, []byte("two\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case hash := <-changes:
+		if hash == "" {
+			t.Fatal("empty changed hash")
+		}
+	case err := <-errs:
+		t.Fatal(err)
+	case <-time.After(time.Second):
+		t.Fatal("polling watcher did not report change")
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("polling watcher did not stop after cancellation")
+	}
+}
+
 func TestParseNativeStrict(t *testing.T) {
 	ir, err := ParseNative([]byte(`static_resources:
   clusters:

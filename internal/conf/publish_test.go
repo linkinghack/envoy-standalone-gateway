@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -178,6 +179,61 @@ func TestPublisherBaseHashConflict(t *testing.T) {
 	_, err = pub.PublishWithBase(context.Background(), "test", "conflict", "stale")
 	if !errors.Is(err, ErrDraftChanged) {
 		t.Fatalf("err=%v, want ErrDraftChanged", err)
+	}
+}
+
+func TestPublisherRollbackPublishRestoresAndRecordsVersion(t *testing.T) {
+	data := t.TempDir()
+	if err := writeMinimalDraft(data); err != nil {
+		t.Fatal(err)
+	}
+	st, err := store.Open(filepath.Join(data, "esgw.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = st.Close() }()
+	pub := &Publisher{DataDir: data, Store: st, Deliver: &fakeDeliver{}, Mode: compile.ModeXDS}
+	first, err := pub.Publish(context.Background(), "alice", "first")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(data, "config.d", "listener.yaml")
+	secondBody := []byte(`apiVersion: esgw/v1alpha1
+kind: Listener
+metadata:
+  name: web
+spec:
+  address: 127.0.0.1:8081
+  port: 8081
+  protocol: HTTP
+`)
+	if err := os.WriteFile(path, secondBody, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	second, err := pub.Publish(context.Background(), "bob", "second")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rolled, err := pub.RollbackPublish(context.Background(), first.Seq, "carol", "restore first", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rolled.Seq != 3 || second.Seq != 2 || rolled.IRVersion != first.IRVersion {
+		t.Fatalf("first=%+v second=%+v rolled=%+v", first, second, rolled)
+	}
+	version, err := st.GetVersion(context.Background(), rolled.Seq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if version.State != "effective" || version.RollbackOf != first.Seq || version.ParentSeq != second.Seq {
+		t.Fatalf("rollback version = %+v", version)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(got), "8081") || !strings.Contains(string(got), "8080") {
+		t.Fatalf("rollback source = %q", got)
 	}
 }
 
