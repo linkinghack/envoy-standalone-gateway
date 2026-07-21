@@ -16,3 +16,4 @@
 | 2026-07-20 | T4 持续推进：实现分级周期采集、ready/stats(histogram)/certs/routes 归一化、EDS 排除于版本确认、Publisher 自动确认事件联动；补充 S1~S3 原生 IR、回滚保护、SnapshotJSON、ValidateIR、Store active-run 查询测试。全量 test/race/lint 通过，总覆盖率约 81.4%。 |
 | 2026-07-20 | T4 质量门禁收口：加入 admin 请求串行化、按端点 singleflight、指数退避和启动期 ready 探测；`make e2e` 与 `make e2e-xds` 均通过。新增跨阶段质量矩阵，仍保留 S3 RollbackPublish/watch polling/migration 故障注入和 Envoy 多版本矩阵作为后续增强。 |
 | 2026-07-21 | T4 完成：补齐 singleflight 等待者取消、退避递增/封顶/复位、watch polling 取消、`RollbackPublish` 全链路和 migration failure 测试；build/test/race/vet/lint 全绿。M-API/鉴权/UI 按本 Sprint 非范围移交 S5，不再阻塞 S4 关闭。 |
+| 2026-07-22 | Docker 验收补证：`make e2e` 与 `make e2e-xds` 本轮实跑全绿；`make validate-matrix` 在 Envoy 1.37.5/1.38.3/1.39.0 × 6 份 static golden 的 18 个组合全部通过。 |

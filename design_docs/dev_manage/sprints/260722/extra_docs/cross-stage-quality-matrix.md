@@ -19,12 +19,11 @@ golangci-lint run ./...
 make build
 make e2e
 make e2e-xds
+make validate-matrix
 ```
 
-2026-07-21 收口实跑 `make build`、`go test ./...`、`CC=clang CGO_ENABLED=1 go test -race ./...`、`go vet ./...`、`golangci-lint run ./...`，均通过。两套真实 Envoy e2e 已于 2026-07-20 在运行时代码的当前提交通过；7 月 21 日仅新增测试与文档，Docker daemon 不可用，未重复运行。覆盖率用于发现未验证路径，不作为单独的正确性证明。
+2026-07-21 收口实跑 `make build`、`go test ./...`、`CC=clang CGO_ENABLED=1 go test -race ./...`、`go vet ./...`、`golangci-lint run ./...`，均通过。2026-07-22 Docker 恢复后补跑 `make e2e`、`make e2e-xds`，全部断言通过；同时实跑 `make validate-matrix`，Envoy 1.37.5/1.38.3/1.39.0 对 6 份 static golden 的 18 个组合全部通过。覆盖率用于发现未验证路径，不作为单独的正确性证明。
 
 ## 尚未宣称完成的内容
 
-- S4 管理 API、鉴权和 UI 不属于当前冲刺；
-- S4 collector 已完成；生产 M-API 挂载属于 S5；
-- Envoy 多 minor 版本矩阵需要 CI/外部环境逐版本运行，单一本地镜像不替代矩阵证据。
+- S4 collector 已完成；管理 API、鉴权和 UI 不属于当前冲刺，生产 M-API 挂载属于 S5；

@@ -19,11 +19,12 @@
 - S1~S3 高风险入口的回归测试（native inline resources、rollback force guard、SnapshotJSON、ValidateIR、active publish query）。
 - `RollbackPublish` 完整恢复/发布/版本血缘、watch polling 变更与取消、SQLite migration failure 故障注入；
 - 全量 `go test`、`go test -race`、`golangci-lint` 通过。
+- 2026-07-22 补跑 static/ADS 两套真实 Envoy e2e，并完成 Envoy 1.37.5、1.38.3、1.39.0 × 6 份 static golden 的 validate matrix，全部通过。
 
 ## 后续边界
 
 - M-API 鉴权、REST 与 UI 集成属于本 Sprint `requirements.md` 明确的非范围，转入 S5/S6 验收；
-- Envoy 多 minor 版本矩阵继续由 CI `validate-matrix` 门禁承担，不改变 S4 模块完成结论。
+- Envoy 多 minor 版本矩阵继续由 CI `validate-matrix` 门禁持续执行；本轮本地矩阵亦已全绿。
 
 ## 当前验收结论
 
