@@ -33,6 +33,7 @@ const (
 	udpProxyFilterName       = "envoy.filters.udp_listener.udp_proxy"
 	corsFilterName           = "envoy.filters.http.cors"
 	jwtAuthnFilterName       = "envoy.filters.http.jwt_authn"
+	extAuthzFilterName       = "envoy.filters.http.ext_authz"
 	localRateLimitFilterName = "envoy.filters.http.local_ratelimit"
 	routerFilterName         = "envoy.filters.http.router"
 	tlsTransportSocketName   = "envoy.transport_sockets.tls"

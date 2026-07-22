@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	routev3 "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
+	extauthzv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_authz/v3"
 	tcpproxyv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/tcp_proxy/v3"
 	udpproxyv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/udp/udp_proxy/v3"
 	"google.golang.org/protobuf/proto"
@@ -162,6 +163,14 @@ func checkCrossRefs(out *ir.IR) []CompileError {
 				if hcm == nil {
 					continue
 				}
+				for _, httpFilter := range hcm.GetHttpFilters() {
+					if cluster := extAuthCluster(httpFilter); cluster != "" {
+						if _, ok := out.Clusters[cluster]; !ok {
+							errs = append(errs, validateError(out, key,
+								"ext_authz reference %q has no matching Cluster", cluster))
+						}
+					}
+				}
 				if rds := hcm.GetRds(); rds != nil {
 					if _, ok := out.Routes[rds.GetRouteConfigName()]; !ok {
 						errs = append(errs, validateError(out, key,
@@ -248,6 +257,24 @@ func udpProxyCluster(f typedConfigCarrier) string {
 	// deprecated single-cluster route remains the stable common API across our
 	// 1.37-1.39 compatibility matrix.
 	return proxy.GetCluster() //nolint:staticcheck
+}
+
+func extAuthCluster(f typedConfigCarrier) string {
+	cfg := f.GetTypedConfig()
+	if cfg == nil || !strings.HasSuffix(cfg.GetTypeUrl(), "ExtAuthz") {
+		return ""
+	}
+	ext := &extauthzv3.ExtAuthz{}
+	if err := cfg.UnmarshalTo(ext); err != nil {
+		return ""
+	}
+	if grpc := ext.GetGrpcService(); grpc != nil {
+		return grpc.GetEnvoyGrpc().GetClusterName()
+	}
+	if http := ext.GetHttpService(); http != nil {
+		return http.GetServerUri().GetCluster()
+	}
+	return ""
 }
 
 // checkRouteConfigRefs 校验 RouteConfiguration 内全部 route 的 cluster 引用闭合。

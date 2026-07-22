@@ -15,6 +15,7 @@ import (
 	endpointv3 "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
 	routev3 "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 	corsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/cors/v3"
+	extauthzv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_authz/v3"
 	jwtv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/jwt_authn/v3"
 	localratelimitv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/local_ratelimit/v3"
 	routerv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/router/v3"
@@ -38,7 +39,8 @@ type effectivePolicies struct {
 	cors           *protocol.CORSPolicy
 	rateLimit      *protocol.RateLimitPolicy
 	jwt            *protocol.JWTPolicy
-	unsupported    []string // M0 未实现的策略类型（extAuth/ipAccess/basicAuth），按出现序
+	extAuth        *protocol.ExtAuthPolicy
+	unsupported    []string // 尚未实现的策略类型（ipAccess/basicAuth），按出现序
 }
 
 // normalizePolicies 按就近覆盖合并四级 policies（levels 调用顺序须为
@@ -65,8 +67,10 @@ func normalizePolicies(lk *linked, levels ...[]protocol.PolicyAttachment) effect
 				eff.rateLimit = spec.RateLimit
 			case spec.JWT != nil:
 				eff.jwt = spec.JWT
+			case spec.ExtAuth != nil:
+				eff.extAuth = spec.ExtAuth
 			default:
-				// extAuth/ipAccess/basicAuth：M0 未实现（P1/P2），显式报错而非静默丢弃。
+				// ipAccess/basicAuth 尚未实现，显式报错而非静默丢弃。
 				eff.unsupported = append(eff.unsupported, policyTypeKey(spec))
 			}
 		}
@@ -78,13 +82,13 @@ func normalizePolicies(lk *linked, levels ...[]protocol.PolicyAttachment) effect
 
 // httpFilters 生成 HCM 的 HTTP filter 链。固定顺序（编译层 §3，协议 §3.5 规则 4）：
 //
-//	cors → jwt_authn → local_ratelimit → router
+//	cors → jwt_authn → ext_authz → local_ratelimit → router
 //
 // 完整目标链序为 rbac → cors → jwt_authn → ext_authz → local_ratelimit → router；
 // M0 不实现 rbac/ext_authz（P1），此处在链结构中预留其位置（cors 前、jwt_authn 后），
 // 后续加入时无需挪动既有 filter。所有策略 filter 常驻链上、默认 pass-through，
 // 实际生效范围由 per-rule typed_per_filter_config 控制，避免 filter chain 结构抖动。
-func httpFilters(jwtAsm *jwtAssembly) ([]*hcmv3.HttpFilter, []CompileError) {
+func httpFilters(jwtAsm *jwtAssembly, extAuthAsm *extAuthAssembly) ([]*hcmv3.HttpFilter, []CompileError) {
 	corsCfg, err := marshalAny(&corsv3.Cors{})
 	if err != nil {
 		return nil, []CompileError{{Stage: StageBuild, Severity: SeverityError, Message: err.Error()}}
@@ -108,12 +112,19 @@ func httpFilters(jwtAsm *jwtAssembly) ([]*hcmv3.HttpFilter, []CompileError) {
 			ConfigType: &hcmv3.HttpFilter_TypedConfig{TypedConfig: cfg},
 		}
 	}
-	return []*hcmv3.HttpFilter{
+	filters := []*hcmv3.HttpFilter{
 		mk(corsFilterName, corsCfg),
 		mk(jwtAuthnFilterName, jwtCfg),
-		mk(localRateLimitFilterName, lrlCfg),
-		mk(routerFilterName, routerCfg),
-	}, nil
+	}
+	if extAuthAsm.enabled() {
+		extCfg, err := marshalAny(extAuthAsm.config)
+		if err != nil {
+			return nil, []CompileError{{Stage: StageBuild, Severity: SeverityError, Message: err.Error()}}
+		}
+		filters = append(filters, mk(extAuthzFilterName, extCfg))
+	}
+	filters = append(filters, mk(localRateLimitFilterName, lrlCfg), mk(routerFilterName, routerCfg))
+	return filters, nil
 }
 
 // typedPerFilterConfig 生成一条 rule 的 per-route 策略配置（编译层 §3 策略表）：
@@ -150,6 +161,20 @@ func (ctx *buildContext) typedPerFilterConfig(eff effectivePolicies, jwtAsm *jwt
 			})
 			put(jwtAuthnFilterName, cfg, err)
 		}
+	}
+	if eff.extAuth != nil {
+		perRoute := &extauthzv3.ExtAuthzPerRoute{}
+		if eff.extAuth.Disabled {
+			perRoute.Override = &extauthzv3.ExtAuthzPerRoute_Disabled{Disabled: true}
+		} else {
+			// Empty CheckSettings is an explicit enabled marker used by the Listener
+			// finalization pass to distinguish protected from unconfigured routes.
+			perRoute.Override = &extauthzv3.ExtAuthzPerRoute_CheckSettings{
+				CheckSettings: &extauthzv3.CheckSettings{},
+			}
+		}
+		cfg, err := marshalAny(perRoute)
+		put(extAuthzFilterName, cfg, err)
 	}
 	if len(tpc) == 0 {
 		return nil, errs

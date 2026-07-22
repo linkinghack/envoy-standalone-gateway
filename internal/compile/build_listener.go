@@ -65,18 +65,23 @@ func (ctx *buildContext) buildHTTPListener(l *protocol.Listener) (*listenerv3.Li
 	// RouteConfiguration：挂到本 Listener 的 HTTP 形态 Route，按 Route name 排序（确定性）。
 	rc := &routev3.RouteConfiguration{Name: routeConfigName(name)}
 	jwtAsm := newJwtAssembly()
+	extAuthAsm := newExtAuthAssembly()
 	for _, r := range sortedRoutes(ctx.cs.Routes) {
 		if len(r.Spec.Rules) == 0 || !attachesTo(r, name) {
 			continue
 		}
-		vh, verrs := ctx.buildVirtualHost(l, r, jwtAsm)
+		vh, verrs := ctx.buildVirtualHost(l, r, jwtAsm, extAuthAsm)
 		errs = append(errs, verrs...)
 		if vh != nil {
 			rc.VirtualHosts = append(rc.VirtualHosts, vh)
 		}
 	}
+	if err := finalizeExtAuthRoutes(rc, extAuthAsm.enabled()); err != nil {
+		errs = append(errs, buildError(l.Origin, protocol.KindListener, name, "",
+			"finalize extAuth per-route configuration: %v", err))
+	}
 
-	hcm, herrs := ctx.buildHCM(l, jwtAsm)
+	hcm, herrs := ctx.buildHCM(l, jwtAsm, extAuthAsm)
 	errs = append(errs, herrs...)
 	if hcm == nil {
 		return nil, nil, errs
@@ -179,9 +184,9 @@ func (ctx *buildContext) buildHTTPSFilterChains(l *protocol.Listener, hcmFilter 
 // buildHCM 生成共享的 HttpConnectionManager：
 // stat_prefix = lis/<name>、RDS 名 rc/<listener>（编译层 §5 命名规约）；
 // Gateway.spec.http 默认值（F2 已填充）与 Listener.spec.http 覆盖在此汇合。
-func (ctx *buildContext) buildHCM(l *protocol.Listener, jwtAsm *jwtAssembly) (*hcmv3.HttpConnectionManager, []CompileError) {
+func (ctx *buildContext) buildHCM(l *protocol.Listener, jwtAsm *jwtAssembly, extAuthAsm *extAuthAssembly) (*hcmv3.HttpConnectionManager, []CompileError) {
 	gw := &ctx.cs.Gateway.Spec
-	filters, ferrs := httpFilters(jwtAsm)
+	filters, ferrs := httpFilters(jwtAsm, extAuthAsm)
 	if ferrs != nil {
 		return nil, ferrs
 	}

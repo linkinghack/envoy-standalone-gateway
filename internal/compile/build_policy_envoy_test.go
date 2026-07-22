@@ -9,6 +9,7 @@ import (
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	routev3 "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 	corsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/cors/v3"
+	extauthzv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_authz/v3"
 	jwtv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/jwt_authn/v3"
 	localratelimitv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/local_ratelimit/v3"
 	hcmv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
@@ -59,6 +60,19 @@ func jwtFilterOf(t *testing.T, hcm *hcmv3.HttpConnectionManager) *jwtv3.JwtAuthe
 		}
 	}
 	t.Fatal("jwt_authn filter not found")
+	return nil
+}
+
+func extAuthFilterOf(t *testing.T, hcm *hcmv3.HttpConnectionManager) *extauthzv3.ExtAuthz {
+	t.Helper()
+	for _, f := range hcm.GetHttpFilters() {
+		if f.GetName() == extAuthzFilterName {
+			cfg := &extauthzv3.ExtAuthz{}
+			mustUnmarshal(t, f.GetTypedConfig(), cfg)
+			return cfg
+		}
+	}
+	t.Fatal("ext_authz filter not found")
 	return nil
 }
 
@@ -299,14 +313,89 @@ func TestJWTMissingJWKS(t *testing.T) {
 	}
 }
 
-// TestUnsupportedPolicyType M0 未实现策略类型显式报 build 错误（不静默丢弃）。
-func TestUnsupportedPolicyType(t *testing.T) {
-	spec := protocol.PolicySpec{ExtAuth: &protocol.ExtAuthPolicy{
-		GRPC: &protocol.ExtAuthGRPC{Address: "127.0.0.1:9000"},
+// TestExtAuthGRPC 覆盖 gRPC filter、HTTP/2 auth cluster、fail-open 与 route disable。
+func TestExtAuthGRPC(t *testing.T) {
+	main := protocol.PolicySpec{ExtAuth: &protocol.ExtAuthPolicy{
+		GRPC: &protocol.ExtAuthGRPC{Address: "127.0.0.1:9000"}, FailOpen: true,
 	}}
+	off := protocol.PolicySpec{ExtAuth: &protocol.ExtAuthPolicy{Disabled: true}}
+	cs := policyCS(nil, nil, nil, []protocol.PolicyAttachment{{Inline: &main}})
+	base := cs.Routes[0].Spec.Rules[0]
+	base.Policies = []protocol.PolicyAttachment{{Inline: &off}}
+	cs.Routes[0].Spec.Rules = append(cs.Routes[0].Spec.Rules, base)
+	base.Policies = nil
+	cs.Routes[0].Spec.Rules = append(cs.Routes[0].Spec.Rules, base)
+
+	res, errs := buildCS(t, cs)
+	assertNoErrs(t, errs)
+	hcm := hcmOf(t, findListener(t, res, "lis/web").GetFilterChains()[0])
+	wantOrder := []string{corsFilterName, jwtAuthnFilterName, extAuthzFilterName, localRateLimitFilterName, routerFilterName}
+	if got := strings.Join(httpFilterNames(t, hcm), ","); got != strings.Join(wantOrder, ",") {
+		t.Fatalf("filter order = %s, want %v", got, wantOrder)
+	}
+	cfg := extAuthFilterOf(t, hcm)
+	if !cfg.GetFailureModeAllow() || cfg.GetTransportApiVersion() != corev3.ApiVersion_V3 {
+		t.Fatalf("extAuth config = %+v", cfg)
+	}
+	clusterName := cfg.GetGrpcService().GetEnvoyGrpc().GetClusterName()
+	cluster := findCluster(t, res, clusterName)
+	if cluster.GetType() != clusterv3.Cluster_STATIC || cluster.GetTypedExtensionProtocolOptions() == nil {
+		t.Fatalf("gRPC auth cluster = %+v", cluster)
+	}
+	routes := findRouteConfig(t, res, "rc/web").GetVirtualHosts()[0].GetRoutes()
+	for _, idx := range []int{1, 2} {
+		perRoute := &extauthzv3.ExtAuthzPerRoute{}
+		mustUnmarshal(t, routes[idx].GetTypedPerFilterConfig()[extAuthzFilterName], perRoute)
+		if !perRoute.GetDisabled() {
+			t.Fatalf("route[%d] extAuth = %+v, want disabled", idx, perRoute)
+		}
+	}
+	protected := &extauthzv3.ExtAuthzPerRoute{}
+	mustUnmarshal(t, routes[0].GetTypedPerFilterConfig()[extAuthzFilterName], protected)
+	if protected.GetCheckSettings() == nil {
+		t.Fatalf("route[0] extAuth = %+v, want enabled marker", protected)
+	}
+}
+
+// TestExtAuthHTTP 覆盖 HTTPS HTTP auth service、pathPrefix 与 TLS auth cluster。
+func TestExtAuthHTTP(t *testing.T) {
+	spec := protocol.PolicySpec{ExtAuth: &protocol.ExtAuthPolicy{HTTP: &protocol.ExtAuthHTTP{
+		Address: "https://auth.example.com:9443", PathPrefix: "/verify", CAFile: "/etc/ssl/auth-ca.pem",
+	}}}
+	cs := policyCS(nil, nil, nil, []protocol.PolicyAttachment{{Inline: &spec}})
+	res, errs := buildCS(t, cs)
+	assertNoErrs(t, errs)
+	hcm := hcmOf(t, findListener(t, res, "lis/web").GetFilterChains()[0])
+	cfg := extAuthFilterOf(t, hcm)
+	if cfg.GetHttpService().GetPathPrefix() != "/verify" || cfg.GetHttpService().GetServerUri().GetUri() != "https://auth.example.com:9443" {
+		t.Fatalf("HTTP extAuth config = %+v", cfg.GetHttpService())
+	}
+	cluster := findCluster(t, res, cfg.GetHttpService().GetServerUri().GetCluster())
+	if cluster.GetType() != clusterv3.Cluster_STRICT_DNS || cluster.GetTransportSocket() == nil {
+		t.Fatalf("HTTPS auth cluster = %+v", cluster)
+	}
+}
+
+// TestExtAuthConflict rejects two effective listener-level service configurations.
+func TestExtAuthConflict(t *testing.T) {
+	a := protocol.PolicySpec{ExtAuth: &protocol.ExtAuthPolicy{GRPC: &protocol.ExtAuthGRPC{Address: "127.0.0.1:9000"}}}
+	b := protocol.PolicySpec{ExtAuth: &protocol.ExtAuthPolicy{GRPC: &protocol.ExtAuthGRPC{Address: "127.0.0.1:9001"}}}
+	cs := policyCS(nil, nil, nil, []protocol.PolicyAttachment{{Inline: &a}})
+	second := cs.Routes[0].Spec.Rules[0]
+	second.Policies = []protocol.PolicyAttachment{{Inline: &b}}
+	cs.Routes[0].Spec.Rules = append(cs.Routes[0].Spec.Rules, second)
+	_, errs := buildCS(t, cs)
+	if len(errs) != 1 || errs[0].Stage != StageBuild || !strings.Contains(errs[0].Message, "conflicts") {
+		t.Fatalf("want one extAuth conflict, got:\n%s", formatErrs(errs))
+	}
+}
+
+// TestUnsupportedPolicyType 未实现策略类型显式报 build 错误（不静默丢弃）。
+func TestUnsupportedPolicyType(t *testing.T) {
+	spec := protocol.PolicySpec{BasicAuth: &protocol.BasicAuthPolicy{Users: "user:hash"}}
 	cs := policyCS(nil, nil, nil, []protocol.PolicyAttachment{{Inline: &spec}})
 	_, errs := buildCS(t, cs)
-	if len(errs) != 1 || errs[0].Stage != StageBuild || !strings.Contains(errs[0].Message, "extAuth is not implemented in M0") {
+	if len(errs) != 1 || errs[0].Stage != StageBuild || !strings.Contains(errs[0].Message, "basicAuth is not implemented in M0") {
 		t.Fatalf("want not-implemented build error, got:\n%s", formatErrs(errs))
 	}
 }

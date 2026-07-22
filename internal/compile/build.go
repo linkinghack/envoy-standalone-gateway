@@ -25,6 +25,7 @@ type buildContext struct {
 	lk      *linked
 	extract serverNameExtractor
 	jwks    map[string]*clusterv3.Cluster // 远程 JWKS 自动生成的抓取集群（按 name 去重）
+	extAuth map[string]*clusterv3.Cluster // ext_authz 自动生成的服务集群（按 name 去重）
 }
 
 // build 执行 F3 构建：已链接 ConfigSet → 逻辑 Envoy v3 资源。
@@ -34,7 +35,10 @@ func build(cs *protocol.ConfigSet, lk *linked, extract serverNameExtractor) (*bu
 	if extract == nil {
 		extract = defaultServerNameExtractor
 	}
-	ctx := &buildContext{cs: cs, lk: lk, extract: extract, jwks: map[string]*clusterv3.Cluster{}}
+	ctx := &buildContext{
+		cs: cs, lk: lk, extract: extract,
+		jwks: map[string]*clusterv3.Cluster{}, extAuth: map[string]*clusterv3.Cluster{},
+	}
 	res := &buildResult{}
 	var errs []CompileError
 
@@ -66,6 +70,9 @@ func build(cs *protocol.ConfigSet, lk *linked, extract serverNameExtractor) (*bu
 	}
 	// 远程 JWKS 抓取集群（PolicyBuilder 装配时收集），并入集群集合。
 	for _, cl := range ctx.jwks {
+		res.clusters = append(res.clusters, cl)
+	}
+	for _, cl := range ctx.extAuth {
 		res.clusters = append(res.clusters, cl)
 	}
 	// map 输出按 name 排序（编译层 §5 确定性）。

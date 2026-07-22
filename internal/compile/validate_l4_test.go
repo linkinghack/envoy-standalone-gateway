@@ -41,3 +41,28 @@ func TestL4ClusterReferenceValidation(t *testing.T) {
 		})
 	}
 }
+
+func TestExtAuthClusterReferenceValidation(t *testing.T) {
+	spec := protocol.PolicySpec{ExtAuth: &protocol.ExtAuthPolicy{
+		GRPC: &protocol.ExtAuthGRPC{Address: "127.0.0.1:9000"},
+	}}
+	cs := policyCS(nil, nil, nil, []protocol.PolicyAttachment{{Inline: &spec}})
+	out, errs := Compile(cs, Options{Mode: ModeStatic})
+	assertNoErrs(t, errs)
+	cluster := ""
+	for name := range out.Clusters {
+		if strings.HasPrefix(name, "extauth/") {
+			cluster = name
+			delete(out.Clusters, name)
+		}
+	}
+	if cluster == "" {
+		t.Fatal("generated extAuth cluster not found")
+	}
+	verrs := validateIR(out)
+	if len(verrs) != 1 || verrs[0].Stage != StageValidate ||
+		!strings.Contains(verrs[0].Message, "ext_authz reference") ||
+		!strings.Contains(verrs[0].Message, cluster) {
+		t.Fatalf("want one extAuth missing-cluster error, got:\n%s", formatErrs(verrs))
+	}
+}

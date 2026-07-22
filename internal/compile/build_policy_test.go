@@ -8,7 +8,7 @@ import (
 
 // TestNormalizePolicies 穷举策略归一化语义（协议 §3.5 规则 3/3a，技术设计 §4 风险项）：
 // 同类型就近覆盖整体替换（rule > Route > Listener > Gateway）、引用与内联等价、
-// jwt.optional 局部关闭、M0 未实现类型显式标记。
+// jwt.optional/extAuth.disabled 局部关闭、未实现类型显式标记。
 func TestNormalizePolicies(t *testing.T) {
 	corsSpec := func(origin string) protocol.PolicySpec {
 		return protocol.PolicySpec{CORS: &protocol.CORSPolicy{AllowOrigins: []string{origin}}}
@@ -149,15 +149,25 @@ func TestNormalizePolicies(t *testing.T) {
 		}
 	})
 
-	t.Run("unsupported types flagged", func(t *testing.T) {
+	t.Run("extAuth normalized", func(t *testing.T) {
 		lk := &linked{policies: map[string]*protocol.Policy{
 			"ext": newPolicy("ext", protocol.PolicySpec{ExtAuth: &protocol.ExtAuthPolicy{
 				GRPC: &protocol.ExtAuthGRPC{Address: "127.0.0.1:9000"},
 			}}),
 		}}
 		eff := normalizePolicies(lk, []protocol.PolicyAttachment{ref("ext")})
-		if len(eff.unsupported) != 1 || eff.unsupported[0] != "extAuth" {
-			t.Fatalf("unsupported = %v, want [extAuth]", eff.unsupported)
+		if eff.extAuth == nil || eff.extAuth.GRPC == nil || len(eff.unsupported) != 0 {
+			t.Fatalf("extAuth=%+v unsupported=%v", eff.extAuth, eff.unsupported)
+		}
+	})
+
+	t.Run("unsupported types flagged", func(t *testing.T) {
+		lk := &linked{policies: map[string]*protocol.Policy{
+			"basic": newPolicy("basic", protocol.PolicySpec{BasicAuth: &protocol.BasicAuthPolicy{Users: "user:hash"}}),
+		}}
+		eff := normalizePolicies(lk, []protocol.PolicyAttachment{ref("basic")})
+		if len(eff.unsupported) != 1 || eff.unsupported[0] != "basicAuth" {
+			t.Fatalf("unsupported = %v, want [basicAuth]", eff.unsupported)
 		}
 	})
 }

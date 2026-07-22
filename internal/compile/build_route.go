@@ -17,14 +17,14 @@ import (
 // buildVirtualHost 把一个 Route 对象翻译为 VirtualHost vh/<route>
 // （编译层 §3 Builder 表）：domains = hostnames（精确 > 通配 > 兜底排序），
 // rules 保序翻译为 routes（顺序即优先级，协议 P4）。
-func (ctx *buildContext) buildVirtualHost(l *protocol.Listener, r *protocol.Route, jwtAsm *jwtAssembly) (*routev3.VirtualHost, []CompileError) {
+func (ctx *buildContext) buildVirtualHost(l *protocol.Listener, r *protocol.Route, jwtAsm *jwtAssembly, extAuthAsm *extAuthAssembly) (*routev3.VirtualHost, []CompileError) {
 	var errs []CompileError
 	vh := &routev3.VirtualHost{
 		Name:    virtualHostName(r.Metadata.Name),
 		Domains: routeDomains(r),
 	}
 	for i := range r.Spec.Rules {
-		rr, rerrs := ctx.buildRule(l, r, i, jwtAsm)
+		rr, rerrs := ctx.buildRule(l, r, i, jwtAsm, extAuthAsm)
 		errs = append(errs, rerrs...)
 		if rr != nil {
 			vh.Routes = append(vh.Routes, rr)
@@ -66,7 +66,7 @@ func domainRank(d string) int {
 // buildRule 把一条 rule 翻译为 routev3.Route：match / rewrite / 动作三选一 /
 // timeout / retry_policy，外加四级归一化后的策略装配（headerModifier 落 route 字段，
 // cors/rateLimit/jwt 落 typed_per_filter_config）。
-func (ctx *buildContext) buildRule(l *protocol.Listener, r *protocol.Route, idx int, jwtAsm *jwtAssembly) (*routev3.Route, []CompileError) {
+func (ctx *buildContext) buildRule(l *protocol.Listener, r *protocol.Route, idx int, jwtAsm *jwtAssembly, extAuthAsm *extAuthAssembly) (*routev3.Route, []CompileError) {
 	var errs []CompileError
 	rule := &r.Spec.Rules[idx]
 	rulePath := fmt.Sprintf("spec.rules[%d]", idx)
@@ -92,6 +92,10 @@ func (ctx *buildContext) buildRule(l *protocol.Listener, r *protocol.Route, idx 
 	// 策略归一化（Gateway → Listener → Route → rule，就近覆盖）后装配。
 	eff := normalizePolicies(ctx.lk,
 		ctx.cs.Gateway.Spec.Policies, l.Spec.Policies, r.Spec.Policies, rule.Policies)
+	if err := ctx.registerExtAuth(extAuthAsm, eff.extAuth); err != nil {
+		errs = append(errs, buildError(r.Origin, protocol.KindRoute, r.Metadata.Name,
+			rulePath+".policies", "%v", err))
+	}
 	for _, typ := range eff.unsupported {
 		errs = append(errs, buildError(r.Origin, protocol.KindRoute, r.Metadata.Name,
 			rulePath+".policies", "policy type %s is not implemented in M0 (P1)", typ))
