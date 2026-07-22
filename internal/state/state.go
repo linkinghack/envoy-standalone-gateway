@@ -248,7 +248,9 @@ func (s *Service) ObserveProcess(ctx context.Context) (bool, int, error) {
 		return false, 0, err
 	}
 	var server struct {
-		Epoch int `json:"hot_restart_epoch"`
+		CommandLineOptions struct {
+			RestartEpoch int `json:"restart_epoch"`
+		} `json:"command_line_options"`
 	}
 	if err := json.Unmarshal(body, &server); err != nil {
 		return false, 0, err
@@ -256,7 +258,7 @@ func (s *Service) ObserveProcess(ctx context.Context) (bool, int, error) {
 	s.mu.Lock()
 	ready := s.current.Ready
 	s.mu.Unlock()
-	return ready, server.Epoch, nil
+	return ready, server.CommandLineOptions.RestartEpoch, nil
 }
 
 // VersionStatus returns the current version confirmation state.

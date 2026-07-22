@@ -192,7 +192,7 @@ func TestHTTPClientRejectsWritePaths(t *testing.T) {
 
 func TestServiceConfirmsConfigDumpVersion(t *testing.T) {
 	service := New("node-1", fakeAdmin{responses: map[string][]byte{
-		"/server_info":             []byte(`{"version":"1.30","state":"LIVE","hot_restart_epoch":2}`),
+		"/server_info":             []byte(`{"version":"1.30","state":"LIVE","command_line_options":{"restart_epoch":2}}`),
 		"/config_dump?include_eds": []byte(`{"configs":[{"version_info":"abc123"},{"version_info":"abc123"}]}`),
 	}})
 	events := make(chan VersionConfirmEvent, 1)
@@ -260,9 +260,24 @@ func TestConfigDumpVersionsIgnoresEDSForConfirmation(t *testing.T) {
 	}
 }
 
+func TestObserveProcessReadsCommandLineRestartEpoch(t *testing.T) {
+	t.Parallel()
+	service := New("node-1", fakeAdmin{responses: map[string][]byte{
+		"/ready":       []byte("LIVE\n"),
+		"/server_info": []byte(`{"state":"LIVE","command_line_options":{"restart_epoch":1}}`),
+	}})
+	ready, epoch, err := service.ObserveProcess(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ready || epoch != 1 {
+		t.Fatalf("ready=%v epoch=%d", ready, epoch)
+	}
+}
+
 func TestServiceParsesListenersAndClusters(t *testing.T) {
 	service := New("node-1", fakeAdmin{responses: map[string][]byte{
-		"/server_info":             []byte(`{"version":"1.30","state":"LIVE","uptime_current_epoch":"12","hot_restart_epoch":2}`),
+		"/server_info":             []byte(`{"version":"1.30","state":"LIVE","uptime_current_epoch":"12","command_line_options":{"restart_epoch":2}}`),
 		"/config_dump?include_eds": []byte(`{"configs":[{"name":"lis/web","address":{"socket_address":{"address":"0.0.0.0","port_value":443}}},{"name":"rc/web","virtual_hosts":[{"name":"vh/api","domains":["example.test"]}]}]}`),
 		"/clusters?format=json":    []byte(`{"cluster_statuses":[{"name":"us/api","host_statuses":[{"address":{"socket_address":{"address":"10.0.0.7","port_value":8080}},"health_status":"healthy","weight":3},{"address":{"socket_address":{"address":"10.0.0.8","port_value":8080}},"health_status":"failed_active_health_check"}]}]}`),
 	}})
