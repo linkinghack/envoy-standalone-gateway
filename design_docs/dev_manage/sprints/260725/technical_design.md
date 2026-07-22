@@ -13,18 +13,18 @@
 
 - `internal/proc/discover.go`：发现顺序 `ESGW_ENVOY_PATH` → `proc.envoyPath` → PATH，执行 `--version` 并解析支持区间；
 - `internal/proc/record.go`：`run/proc.json` 原子记录 `{pid,baseID,epoch,configPath,startedAt,envoyVersion,state}`；Linux `kill(pid,0)` 只作存活线索；
-- `internal/proc/supervisor.go`：Runner/Process 抽象、spawn/wait/signal、接管、退避和事件；生产实现基于 `os/exec`，测试使用 fake；
+- `internal/proc/supervisor.go`：Runner/Process 抽象、spawn/wait/signal、接管、退避和事件；生产实现由隐藏的独立 launcher 作为 Envoy 长期父进程，launcher 通过继承 fd 回报 Envoy PID 并负责 wait/reap，测试使用 fake；
 - `internal/proc/hotrestart.go`：在锁内分配新 epoch、spawn、轮询 `Probe`，失败回杀新进程，永不 signal 旧进程；
 - `internal/deliver/static/writer.go`：Render 后在 output 同目录创建临时文件，`fsync(file) → rename → fsync(dir)`；
 - `internal/deliver/static/server.go`：实现统一 Deliverer；仅下发到 rename 即受理，托管则继续 hot restart。
 
-M-PROC 不直接访问 Envoy admin。`Probe` 由 M-STATE 提供，只暴露 `Ready + HotRestartEpoch` 的只读快照。
+M-PROC 不直接访问 Envoy admin。`Probe` 由 M-STATE 提供，只暴露 `Ready + HotRestartEpoch` 的只读快照；epoch 读取 Envoy v3 `/server_info.command_line_options.restart_epoch`。
 
 ## 3. 生命周期与恢复
 
 组合根先建立 Store/IR/State，再构造模式对应 Deliverer。xDS 只在 xDS 模式监听；static 不打开无意义的 ADS 端口。`proc.enabled=true` 时，初次配置落盘后 supervisor 依记录选择接管或 epoch 0 启动；`false` 时不构造任何可执行进程动作。
 
-管理面关闭只停止自己的 HTTP/ADS/采集 goroutine，不向 Envoy 发送退出信号。托管进程可跨 esgw 重启继续服务；新管理面通过 record + M-STATE epoch 重新接管。
+管理面关闭只停止自己的 HTTP/ADS/采集 goroutine，不向 Envoy 或 launcher 发送退出信号。launcher 在独立 session 中持有并回收 Envoy，避免 `esgw` 直接作为 Envoy 父进程；托管进程可跨 esgw 重启继续服务，新管理面通过 record + `/proc/<pid>/exe` + M-STATE epoch 重新接管。
 
 Envoy 官方 wrapper 在任一 child 非预期退出时退出整个 restarter，由外部进程管理器从 fresh start 恢复；CLI 的 `--skip-hot-restart-on-no-parent` 仅覆盖新进程建立 IPC 前父进程已消失，不覆盖 IPC 后父进程崩溃。因此本实现只对 epoch 0 的普通运行崩溃自动退避 fresh start；epoch>0 当前进程异常退出时进入 degraded，不猜测共享内存/旧 drain 进程状态。下一次显式发布或人工确认后再恢复，DL6 真实 e2e 继续取证。
 
@@ -38,6 +38,8 @@ Envoy 官方 wrapper 在任一 child 非预期退出时退出整个 restarter，
 6. 成功记录 N+1 并返回；失败 SIGKILL 新 epoch、恢复 last-good、记录失败 epoch，返回带 stderr 尾部的 `stage=hot_restart`。
 
 同版本：托管组合幂等跳过；仅下发组合仍重写以修复外部删改。
+
+配置草稿整体替换优先使用同文件系统 rename；容器 overlayfs 对镜像层目录返回 `EXDEV` 时，先完整复制到 0700 备份并同步文件，再删除源目录，随后沿用原事务安装/回滚流程。符号链接不进入复制回退。
 
 ## 5. 测试
 

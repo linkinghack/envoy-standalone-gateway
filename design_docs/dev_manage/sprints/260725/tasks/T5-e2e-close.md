@@ -14,4 +14,8 @@
 
 ## 进展
 
-- 待开始。
+- 已完成（2026-07-22）。
+- 新增 `e2e/static-managed` 与 `make e2e-static-managed`，无 bind mount 构建测试镜像，使用官方 Envoy v1.39.0 和真实 HTTP backend。
+- 验收证据：epoch 0→1；发布窗口 120 次单次请求探测零失败；管理面 SIGTERM 后新进程接管相同 epoch 1/PID；非法 listener port 返回 `VALIDATION_FAILED`，live artifact 哈希、epoch、PID 和流量均不变。
+- 实测修复：Docker overlayfs 对镜像层目录 rename 返回 `EXDEV`，草稿事务增加完整复制后删除回退；M-STATE 改读真实 `command_line_options.restart_epoch`；M-PROC 通过独立 launcher 保持 Envoy 父进程跨管理面重启存活。
+- 本地 `make build`、`go test ./...`、`go test -race ./...`、`go vet ./...`、`golangci-lint run ./...` 全绿；远端 CI 待推送后补证。
