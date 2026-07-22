@@ -1,0 +1,29 @@
+# Sprint 260727 任务拆分与进展追踪
+
+| ID | 任务 | 状态 | 验收 |
+|---|---|---|---|
+| T1 | L4 语义、TCP/TLS/UDP Builder 与 golden | 进行中 | unit + 3-version validate |
+| T2 | extAuth HTTP/gRPC 编译与冲突模型 | 待开始 | unit + auth service traffic |
+| T3 | IPAccess 与动态 key 本地限流 | 待开始 | policy unit + isolated quota e2e |
+| T4 | downstream mTLS、熔断与协议校验收紧 | 待开始 | TLS/circuit tests + traffic |
+| T5 | schema/spec/examples 独立发行与 conformance | 待开始 | clean-diff + external runner |
+| T6 | static/xDS 真实矩阵、文档与 Sprint 收口 | 待开始 | full gates + A1–A8 |
+
+## 冲刺日志
+
+| 日期 | 事项 |
+|---|---|
+| 2026-07-23 | M1 完成度审计确认 S9+ 尚未开展；制定 M2 完成计划并拆为 S9–S12。S9 冻结 L4、P1 策略、限流不降级、downstream mTLS 与协议发行边界，T1 开始。 |
+
+## 验收核验
+
+| ID | 状态 | 证据 |
+|---|---|---|
+| A1 TCP/TLS/UDP 编译 | 待核验 | — |
+| A2 L4 真实流量 | 待核验 | — |
+| A3 extAuth | 待核验 | — |
+| A4 IPAccess/限流 key | 待核验 | — |
+| A5 downstream mTLS/熔断 | 待核验 | — |
+| A6 协议发行/conformance | 待核验 | — |
+| A7 三版本/static/xDS | 待核验 | — |
+| A8 全量门禁 | 待核验 | — |
