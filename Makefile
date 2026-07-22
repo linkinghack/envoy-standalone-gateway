@@ -53,6 +53,10 @@ e2e: ## S1 真实流量冒烟（docker compose；默认 go test 不触发）
 e2e-xds: ## ADS 模式 e2e（esgw serve + 真实 Envoy；docker compose）
 	e2e/xds/run.sh
 
+.PHONY: e2e-static-managed
+e2e-static-managed: ## static 托管 hot restart e2e（真实 Envoy）
+	e2e/static-managed/run.sh
+
 .PHONY: golden-update
 golden-update: ## 刷新 golden 快照（diff 必须人工评审）
 	go test ./internal/golden -update

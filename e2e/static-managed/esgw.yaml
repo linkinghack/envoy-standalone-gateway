@@ -1,0 +1,28 @@
+dataDir: /var/lib/esgw
+deliver:
+  mode: static
+  xds:
+    adminAddress: unix:///tmp/esgw-static-managed-admin.sock
+  static:
+    outputPath: /var/lib/esgw/envoy/envoy.yaml
+proc:
+  enabled: true
+  envoyPath: /usr/local/bin/envoy
+  baseID: 260725
+  liveTimeout: 15s
+  drainTime: 2s
+  parentShutdownTime: 2m
+  restartBackoff:
+    initial: 100ms
+    max: 1s
+    resetAfter: 10s
+    giveUpPer10m: 5
+api:
+  listen: 0.0.0.0:8080
+  topology: standalone
+state:
+  readyInterval: 1s
+  statsInterval: 1s
+  clustersInterval: 1s
+  configInterval: 1s
+  certsInterval: 30s
