@@ -1,0 +1,1186 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://linkinghack.com/esgw/schemas/v1alpha1.json",
+  "$defs": {
+    "AccessLog": {
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "format": {
+          "$ref": "#/$defs/AccessLogFormat"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "AccessLogFormat": {
+      "type": "string",
+      "enum": [
+        "json",
+        "text"
+      ]
+    },
+    "BackendRef": {
+      "properties": {
+        "upstream": {
+          "type": "string"
+        },
+        "weight": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "upstream"
+      ]
+    },
+    "BasicAuthPolicy": {
+      "properties": {
+        "users": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "users"
+      ]
+    },
+    "CORSPolicy": {
+      "properties": {
+        "allowOrigins": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "allowMethods": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "allowHeaders": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "allowCredentials": {
+          "type": "boolean"
+        },
+        "maxAge": {
+          "$ref": "#/$defs/Duration"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "Certificate": {
+      "properties": {
+        "certFile": {
+          "type": "string"
+        },
+        "keyFile": {
+          "type": "string"
+        },
+        "ref": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "DNSEndpointSource": {
+      "properties": {
+        "hostname": {
+          "type": "string"
+        },
+        "port": {
+          "type": "integer",
+          "maximum": 65535,
+          "minimum": 1
+        },
+        "resolution": {
+          "$ref": "#/$defs/DNSResolution"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "hostname",
+        "port"
+      ]
+    },
+    "DNSResolution": {
+      "type": "string",
+      "enum": [
+        "logical",
+        "strict"
+      ]
+    },
+    "DirectResponse": {
+      "properties": {
+        "status": {
+          "type": "integer"
+        },
+        "body": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "status"
+      ]
+    },
+    "Duration": {
+      "type": "string",
+      "pattern": "^([0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$",
+      "description": "Go duration 字符串，如 5s、1m30s、500ms（协议 §4）"
+    },
+    "Endpoint": {
+      "properties": {
+        "address": {
+          "type": "string"
+        },
+        "port": {
+          "type": "integer",
+          "maximum": 65535,
+          "minimum": 1
+        },
+        "weight": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "address",
+        "port"
+      ]
+    },
+    "EnvoyPatch": {
+      "properties": {
+        "target": {
+          "type": "string"
+        },
+        "op": {
+          "$ref": "#/$defs/PatchOp"
+        },
+        "value": {
+          "$ref": "#/$defs/RawJSON"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "target",
+        "op",
+        "value"
+      ]
+    },
+    "EnvoyResources": {
+      "properties": {
+        "apiVersion": {
+          "type": "string",
+          "const": "esgw/v1alpha1"
+        },
+        "kind": {
+          "type": "string",
+          "const": "EnvoyResources"
+        },
+        "metadata": {
+          "$ref": "#/$defs/ObjectMeta"
+        },
+        "spec": {
+          "$ref": "#/$defs/EnvoyResourcesSpec"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "apiVersion",
+        "kind",
+        "metadata",
+        "spec"
+      ]
+    },
+    "EnvoyResourcesSpec": {
+      "properties": {
+        "resources": {
+          "items": {
+            "$ref": "#/$defs/RawJSON"
+          },
+          "type": "array"
+        },
+        "allowOverride": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "resources"
+      ]
+    },
+    "ExtAuthGRPC": {
+      "properties": {
+        "address": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "address"
+      ]
+    },
+    "ExtAuthHTTP": {
+      "properties": {
+        "address": {
+          "type": "string"
+        },
+        "pathPrefix": {
+          "type": "string"
+        },
+        "caFile": {
+          "type": "string"
+        },
+        "insecureSkipVerify": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "address"
+      ]
+    },
+    "ExtAuthPolicy": {
+      "properties": {
+        "grpc": {
+          "$ref": "#/$defs/ExtAuthGRPC"
+        },
+        "http": {
+          "$ref": "#/$defs/ExtAuthHTTP"
+        },
+        "failOpen": {
+          "type": "boolean"
+        },
+        "disabled": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "Forward": {
+      "properties": {
+        "upstream": {
+          "type": "string"
+        },
+        "sniHosts": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "upstream"
+      ]
+    },
+    "Gateway": {
+      "properties": {
+        "apiVersion": {
+          "type": "string",
+          "const": "esgw/v1alpha1"
+        },
+        "kind": {
+          "type": "string",
+          "const": "Gateway"
+        },
+        "metadata": {
+          "$ref": "#/$defs/ObjectMeta"
+        },
+        "spec": {
+          "$ref": "#/$defs/GatewaySpec"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "apiVersion",
+        "kind",
+        "metadata",
+        "spec"
+      ]
+    },
+    "GatewaySpec": {
+      "properties": {
+        "accessLog": {
+          "$ref": "#/$defs/AccessLog"
+        },
+        "http": {
+          "$ref": "#/$defs/HTTPDefaults"
+        },
+        "policies": {
+          "items": {
+            "$ref": "#/$defs/PolicyAttachment"
+          },
+          "type": "array"
+        },
+        "envoyPatch": {
+          "items": {
+            "$ref": "#/$defs/EnvoyPatch"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "HTTPDefaults": {
+      "properties": {
+        "idleTimeout": {
+          "$ref": "#/$defs/Duration"
+        },
+        "maxRequestHeadersKb": {
+          "type": "integer"
+        },
+        "serverHeader": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "HTTPHealthCheck": {
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "expectedStatuses": {
+          "items": {
+            "type": "integer"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "HashOn": {
+      "properties": {
+        "header": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "header"
+      ]
+    },
+    "HeaderModifierPolicy": {
+      "properties": {
+        "request": {
+          "$ref": "#/$defs/HeaderOps"
+        },
+        "response": {
+          "$ref": "#/$defs/HeaderOps"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "HeaderOps": {
+      "properties": {
+        "set": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "add": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "remove": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "HealthCheck": {
+      "properties": {
+        "http": {
+          "$ref": "#/$defs/HTTPHealthCheck"
+        },
+        "tcp": {
+          "$ref": "#/$defs/TCPHealthCheck"
+        },
+        "interval": {
+          "$ref": "#/$defs/Duration"
+        },
+        "timeout": {
+          "$ref": "#/$defs/Duration"
+        },
+        "healthyThreshold": {
+          "type": "integer"
+        },
+        "unhealthyThreshold": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "IPAccessPolicy": {
+      "properties": {
+        "allow": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "deny": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "JWKS": {
+      "properties": {
+        "uri": {
+          "type": "string"
+        },
+        "file": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "JWTPolicy": {
+      "properties": {
+        "issuer": {
+          "type": "string"
+        },
+        "audiences": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "jwks": {
+          "$ref": "#/$defs/JWKS"
+        },
+        "forwardPayloadHeader": {
+          "type": "string"
+        },
+        "optional": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "KeyValueMatch": {
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "exact": {
+          "type": "string"
+        },
+        "regex": {
+          "type": "string"
+        },
+        "present": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "name"
+      ]
+    },
+    "KubernetesServiceSource": {
+      "properties": {
+        "namespace": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "port": {
+          "type": "integer",
+          "maximum": 65535,
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "namespace",
+        "name",
+        "port"
+      ]
+    },
+    "LBPolicy": {
+      "type": "string",
+      "enum": [
+        "roundRobin",
+        "leastRequest",
+        "random",
+        "ringHash",
+        "maglev"
+      ]
+    },
+    "Listener": {
+      "properties": {
+        "apiVersion": {
+          "type": "string",
+          "const": "esgw/v1alpha1"
+        },
+        "kind": {
+          "type": "string",
+          "const": "Listener"
+        },
+        "metadata": {
+          "$ref": "#/$defs/ObjectMeta"
+        },
+        "spec": {
+          "$ref": "#/$defs/ListenerSpec"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "apiVersion",
+        "kind",
+        "metadata",
+        "spec"
+      ]
+    },
+    "ListenerHTTP": {
+      "properties": {
+        "http2": {
+          "type": "boolean"
+        },
+        "http3": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "ListenerProtocol": {
+      "type": "string",
+      "enum": [
+        "HTTP",
+        "HTTPS",
+        "TCP",
+        "TLS",
+        "UDP"
+      ]
+    },
+    "ListenerSpec": {
+      "properties": {
+        "address": {
+          "type": "string",
+          "minLength": 1
+        },
+        "port": {
+          "type": "integer",
+          "maximum": 65535,
+          "minimum": 1
+        },
+        "protocol": {
+          "$ref": "#/$defs/ListenerProtocol"
+        },
+        "tls": {
+          "$ref": "#/$defs/ListenerTLS"
+        },
+        "http": {
+          "$ref": "#/$defs/ListenerHTTP"
+        },
+        "policies": {
+          "items": {
+            "$ref": "#/$defs/PolicyAttachment"
+          },
+          "type": "array"
+        },
+        "envoyPatch": {
+          "items": {
+            "$ref": "#/$defs/EnvoyPatch"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "port",
+        "protocol"
+      ]
+    },
+    "ListenerTLS": {
+      "properties": {
+        "certificates": {
+          "items": {
+            "$ref": "#/$defs/Certificate"
+          },
+          "type": "array"
+        },
+        "minVersion": {
+          "$ref": "#/$defs/TLSVersion"
+        },
+        "alpn": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "clientCA": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "certificates"
+      ]
+    },
+    "LoadBalancer": {
+      "properties": {
+        "policy": {
+          "$ref": "#/$defs/LBPolicy"
+        },
+        "hashOn": {
+          "items": {
+            "$ref": "#/$defs/HashOn"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "ObjectMeta": {
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$"
+        },
+        "labels": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "name"
+      ]
+    },
+    "PatchOp": {
+      "type": "string",
+      "enum": [
+        "merge",
+        "jsonPatch"
+      ]
+    },
+    "PathMatch": {
+      "properties": {
+        "exact": {
+          "type": "string"
+        },
+        "prefix": {
+          "type": "string"
+        },
+        "regex": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "Policy": {
+      "properties": {
+        "apiVersion": {
+          "type": "string",
+          "const": "esgw/v1alpha1"
+        },
+        "kind": {
+          "type": "string",
+          "const": "Policy"
+        },
+        "metadata": {
+          "$ref": "#/$defs/ObjectMeta"
+        },
+        "spec": {
+          "$ref": "#/$defs/PolicySpec"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "apiVersion",
+        "kind",
+        "metadata",
+        "spec"
+      ]
+    },
+    "PolicyAttachment": {
+      "oneOf": [
+        {
+          "type": "string",
+          "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$",
+          "description": "引用 Policy 名"
+        },
+        {
+          "$ref": "#/$defs/PolicySpec"
+        }
+      ]
+    },
+    "PolicySpec": {
+      "properties": {
+        "headerModifier": {
+          "$ref": "#/$defs/HeaderModifierPolicy"
+        },
+        "cors": {
+          "$ref": "#/$defs/CORSPolicy"
+        },
+        "rateLimit": {
+          "$ref": "#/$defs/RateLimitPolicy"
+        },
+        "jwt": {
+          "$ref": "#/$defs/JWTPolicy"
+        },
+        "extAuth": {
+          "$ref": "#/$defs/ExtAuthPolicy"
+        },
+        "ipAccess": {
+          "$ref": "#/$defs/IPAccessPolicy"
+        },
+        "basicAuth": {
+          "$ref": "#/$defs/BasicAuthPolicy"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "RateLimitPolicy": {
+      "properties": {
+        "requests": {
+          "type": "integer",
+          "maximum": 2147483647,
+          "minimum": 1
+        },
+        "unit": {
+          "$ref": "#/$defs/RateLimitUnit"
+        },
+        "burst": {
+          "type": "integer",
+          "maximum": 2147483647,
+          "minimum": 1
+        },
+        "key": {
+          "type": "string"
+        },
+        "maxKeys": {
+          "type": "integer",
+          "maximum": 100000,
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "requests",
+        "unit"
+      ]
+    },
+    "RateLimitUnit": {
+      "type": "string",
+      "enum": [
+        "second",
+        "minute",
+        "hour"
+      ]
+    },
+    "RawJSON": true,
+    "Redirect": {
+      "properties": {
+        "scheme": {
+          "type": "string"
+        },
+        "code": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "RegexSubstitution": {
+      "properties": {
+        "pattern": {
+          "type": "string"
+        },
+        "substitution": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "pattern",
+        "substitution"
+      ]
+    },
+    "Retry": {
+      "properties": {
+        "attempts": {
+          "type": "integer"
+        },
+        "perTryTimeout": {
+          "$ref": "#/$defs/Duration"
+        },
+        "on": {
+          "items": {
+            "$ref": "#/$defs/RetryOn"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "attempts"
+      ]
+    },
+    "RetryOn": {
+      "type": "string",
+      "enum": [
+        "5xx",
+        "gateway-error",
+        "connect-failure",
+        "reset",
+        "retriable-4xx"
+      ]
+    },
+    "Rewrite": {
+      "properties": {
+        "pathPrefix": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "regex": {
+          "$ref": "#/$defs/RegexSubstitution"
+        },
+        "host": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "Route": {
+      "properties": {
+        "apiVersion": {
+          "type": "string",
+          "const": "esgw/v1alpha1"
+        },
+        "kind": {
+          "type": "string",
+          "const": "Route"
+        },
+        "metadata": {
+          "$ref": "#/$defs/ObjectMeta"
+        },
+        "spec": {
+          "$ref": "#/$defs/RouteSpec"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "apiVersion",
+        "kind",
+        "metadata",
+        "spec"
+      ]
+    },
+    "RouteSpec": {
+      "properties": {
+        "listeners": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "hostnames": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "policies": {
+          "items": {
+            "$ref": "#/$defs/PolicyAttachment"
+          },
+          "type": "array"
+        },
+        "rules": {
+          "items": {
+            "$ref": "#/$defs/Rule"
+          },
+          "type": "array"
+        },
+        "forward": {
+          "$ref": "#/$defs/Forward"
+        },
+        "envoyPatch": {
+          "items": {
+            "$ref": "#/$defs/EnvoyPatch"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "listeners"
+      ]
+    },
+    "Rule": {
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "match": {
+          "$ref": "#/$defs/RuleMatch"
+        },
+        "rewrite": {
+          "$ref": "#/$defs/Rewrite"
+        },
+        "backends": {
+          "items": {
+            "$ref": "#/$defs/BackendRef"
+          },
+          "type": "array"
+        },
+        "redirect": {
+          "$ref": "#/$defs/Redirect"
+        },
+        "directResponse": {
+          "$ref": "#/$defs/DirectResponse"
+        },
+        "timeout": {
+          "$ref": "#/$defs/Duration"
+        },
+        "retry": {
+          "$ref": "#/$defs/Retry"
+        },
+        "policies": {
+          "items": {
+            "$ref": "#/$defs/PolicyAttachment"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "match"
+      ]
+    },
+    "RuleMatch": {
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/PathMatch"
+        },
+        "methods": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "headers": {
+          "items": {
+            "$ref": "#/$defs/KeyValueMatch"
+          },
+          "type": "array"
+        },
+        "queryParams": {
+          "items": {
+            "$ref": "#/$defs/KeyValueMatch"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "TCPHealthCheck": {
+      "properties": {},
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "TLSVersion": {
+      "type": "string",
+      "enum": [
+        "1.2",
+        "1.3"
+      ]
+    },
+    "Upstream": {
+      "properties": {
+        "apiVersion": {
+          "type": "string",
+          "const": "esgw/v1alpha1"
+        },
+        "kind": {
+          "type": "string",
+          "const": "Upstream"
+        },
+        "metadata": {
+          "$ref": "#/$defs/ObjectMeta"
+        },
+        "spec": {
+          "$ref": "#/$defs/UpstreamSpec"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "apiVersion",
+        "kind",
+        "metadata",
+        "spec"
+      ]
+    },
+    "UpstreamConnection": {
+      "properties": {
+        "connectTimeout": {
+          "$ref": "#/$defs/Duration"
+        },
+        "http2": {
+          "type": "boolean"
+        },
+        "maxConnections": {
+          "type": "integer",
+          "maximum": 2147483647,
+          "minimum": 1
+        },
+        "maxPendingRequests": {
+          "type": "integer",
+          "maximum": 2147483647,
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "UpstreamSpec": {
+      "properties": {
+        "endpoints": {
+          "items": {
+            "$ref": "#/$defs/Endpoint"
+          },
+          "type": "array"
+        },
+        "dns": {
+          "$ref": "#/$defs/DNSEndpointSource"
+        },
+        "kubernetesService": {
+          "$ref": "#/$defs/KubernetesServiceSource"
+        },
+        "loadBalancer": {
+          "$ref": "#/$defs/LoadBalancer"
+        },
+        "healthCheck": {
+          "$ref": "#/$defs/HealthCheck"
+        },
+        "tls": {
+          "$ref": "#/$defs/UpstreamTLS"
+        },
+        "connection": {
+          "$ref": "#/$defs/UpstreamConnection"
+        },
+        "envoyPatch": {
+          "items": {
+            "$ref": "#/$defs/EnvoyPatch"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "UpstreamTLS": {
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "sni": {
+          "type": "string"
+        },
+        "caFile": {
+          "type": "string"
+        },
+        "insecureSkipVerify": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    }
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/Gateway"
+    },
+    {
+      "$ref": "#/$defs/Listener"
+    },
+    {
+      "$ref": "#/$defs/Route"
+    },
+    {
+      "$ref": "#/$defs/Upstream"
+    },
+    {
+      "$ref": "#/$defs/Policy"
+    },
+    {
+      "$ref": "#/$defs/EnvoyResources"
+    }
+  ],
+  "title": "esgw gateway config protocol v1alpha1"
+}

@@ -1,0 +1,17 @@
+{
+  "valid": false,
+  "diagnostics": [
+    {
+      "code": "ESGW_LINK_INVALID",
+      "stage": "link",
+      "severity": "error",
+      "source": {
+        "file": "examples/invalid/http-policy-on-tcp/config.yaml",
+        "kind": "Listener",
+        "name": "tcp",
+        "path": "spec.policies[0]"
+      },
+      "message": "HTTP policy is not allowed on TCP listener \"tcp\""
+    }
+  ]
+}

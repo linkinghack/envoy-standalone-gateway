@@ -40,7 +40,7 @@ A lightweight management plane (single binary + web UI) that drives one or more 
 
 [![ci](https://github.com/linkinghack/envoy-standalone-gateway/actions/workflows/ci.yaml/badge.svg)](https://github.com/linkinghack/envoy-standalone-gateway/actions/workflows/ci.yaml)
 
-✅ **M1 available**: xDS/static delivery, managed or external Envoy, authenticated management API/UI, systemd and Docker packaging. Start with the [10-minute quickstart](docs/quickstart.md); see [`docs/`](docs/) for operations and security guidance and [`design_docs/`](design_docs/) for design history.
+✅ **M1 available**: xDS/static delivery, managed or external Envoy, authenticated management API/UI, systemd and Docker packaging. Start with the [10-minute quickstart](docs/quickstart.md); the independently consumable gateway protocol, JSON Schema, and conformance examples are in [`protocol/`](protocol/); see [`docs/`](docs/) for operations and security guidance and [`design_docs/`](design_docs/) for design history.
 
 ## Development
 
@@ -50,6 +50,7 @@ Entry point for contributors (human or AI): [`design_docs/dev_manage/sprints/REA
 make build   # build bin/esgw
 make test    # unit tests
 make lint    # golangci-lint
+make protocol-check # schema clean-diff + out-of-repository conformance
 ```
 
 ## Deployment targets

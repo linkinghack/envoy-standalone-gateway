@@ -1,0 +1,36 @@
+apiVersion: esgw/v1alpha1
+kind: Listener
+metadata: {name: api}
+spec:
+  port: 8081
+  protocol: HTTP
+  policies: [private]
+---
+apiVersion: esgw/v1alpha1
+kind: Policy
+metadata: {name: private}
+spec:
+  ipAccess: {allow: [10.0.0.0/8], deny: [10.9.0.0/16]}
+---
+apiVersion: esgw/v1alpha1
+kind: Policy
+metadata: {name: tenant-quota}
+spec:
+  rateLimit: {requests: 100, unit: minute, burst: 120, key: "header:x-tenant", maxKeys: 5000}
+---
+apiVersion: esgw/v1alpha1
+kind: Route
+metadata: {name: service}
+spec:
+  listeners: [api]
+  policies: [tenant-quota]
+  rules:
+    - match: {path: {prefix: /v1}}
+      backends: [{upstream: service}]
+---
+apiVersion: esgw/v1alpha1
+kind: Upstream
+metadata: {name: service}
+spec:
+  dns: {hostname: service.internal, port: 8080, resolution: strict}
+  connection: {maxConnections: 1024, maxPendingRequests: 1024}

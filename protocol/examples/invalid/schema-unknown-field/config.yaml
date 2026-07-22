@@ -1,0 +1,4 @@
+apiVersion: esgw/v1alpha1
+kind: Listener
+metadata: {name: web}
+spec: {port: 8080, protocol: HTTP, protcol: HTTP}

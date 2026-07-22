@@ -39,7 +39,7 @@ for arch in amd64 arm64; do
 		-ldflags "-s -w -X github.com/linkinghack/envoy-standalone-gateway/internal/version.Version=${version}" \
 		-o "$prefix/bin/esgw" ./cmd/esgw)
 	cp "$root/LICENSE" "$root/README.md" "$prefix/"
-	cp -R "$root/docs" "$root/packaging" "$prefix/"
+	cp -R "$root/docs" "$root/packaging" "$root/protocol" "$prefix/"
 	cp "$stage/meta/THIRD_PARTY_LICENSES.csv" "$stage/meta/esgw-${version}.spdx.json" "$prefix/"
 	tar --sort=name --mtime="@${source_date_epoch}" --owner=0 --group=0 --numeric-owner \
 		-C "$stage" -czf "$dist/${name}.tar.gz" "$name"
@@ -48,9 +48,13 @@ for arch in amd64 arm64; do
 cp "$stage/meta/THIRD_PARTY_LICENSES.csv" "$stage/meta/esgw-${version}.spdx.json" "$dist/"
 (cd "$dist" && sha256sum ./*.tar.gz ./THIRD_PARTY_LICENSES.csv ./*.spdx.json >SHA256SUMS)
 for archive in "$dist"/*.tar.gz; do
-	tar -tzf "$archive" | grep -q '/bin/esgw$'
-	tar -tzf "$archive" | grep -q '/packaging/systemd/esgw.service$'
-	tar -tzf "$archive" | grep -q '/THIRD_PARTY_LICENSES.csv$'
-	tar -tzf "$archive" | grep -q '/\.spdx.json$'
+	archive_list="$stage/archive-list.txt"
+	tar -tzf "$archive" >"$archive_list"
+	grep -q '/bin/esgw$' "$archive_list"
+	grep -q '/packaging/systemd/esgw.service$' "$archive_list"
+	grep -q '/protocol/schema/v1alpha1.json$' "$archive_list"
+	grep -q '/protocol/examples/valid/minimal-http/config.yaml$' "$archive_list"
+	grep -q '/THIRD_PARTY_LICENSES.csv$' "$archive_list"
+	grep -q '\.spdx\.json$' "$archive_list"
 done
 echo "release artifacts: $dist"

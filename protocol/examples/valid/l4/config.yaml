@@ -1,0 +1,29 @@
+apiVersion: esgw/v1alpha1
+kind: Listener
+metadata: {name: tcp}
+spec: {port: 9000, protocol: TCP}
+---
+apiVersion: esgw/v1alpha1
+kind: Listener
+metadata: {name: tls-pass}
+spec: {port: 9443, protocol: TLS}
+---
+apiVersion: esgw/v1alpha1
+kind: Route
+metadata: {name: tcp}
+spec:
+  listeners: [tcp]
+  forward: {upstream: app}
+---
+apiVersion: esgw/v1alpha1
+kind: Route
+metadata: {name: tls-a}
+spec:
+  listeners: [tls-pass]
+  forward: {upstream: app, sniHosts: [a.example.com]}
+---
+apiVersion: esgw/v1alpha1
+kind: Upstream
+metadata: {name: app}
+spec:
+  endpoints: [{address: 127.0.0.1, port: 9001}]

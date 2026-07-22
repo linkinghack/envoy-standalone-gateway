@@ -1,0 +1,15 @@
+{
+  "valid": false,
+  "diagnostics": [
+    {
+      "code": "ESGW_SCHEMA_INVALID",
+      "stage": "schema",
+      "severity": "error",
+      "source": {
+        "file": "examples/invalid/schema-unknown-field/config.yaml",
+        "docIndex": 0
+      },
+      "message": "spec: strict decode failed: json: unknown field \"protcol\""
+    }
+  ]
+}

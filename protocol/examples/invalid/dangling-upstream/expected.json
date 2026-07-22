@@ -1,0 +1,17 @@
+{
+  "valid": false,
+  "diagnostics": [
+    {
+      "code": "ESGW_LINK_INVALID",
+      "stage": "link",
+      "severity": "error",
+      "source": {
+        "file": "examples/invalid/dangling-upstream/config.yaml",
+        "kind": "Route",
+        "name": "api",
+        "path": "spec.rules[0].backends[0].upstream"
+      },
+      "message": "dangling reference: upstream \"missing\" not found"
+    }
+  ]
+}

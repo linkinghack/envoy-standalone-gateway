@@ -18,6 +18,8 @@ jobs:
         run: make build
       - name: test
         run: make test
+      - name: protocol schema and conformance clean-diff
+        run: make protocol-check
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v8
         with:
