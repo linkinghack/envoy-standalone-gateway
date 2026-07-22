@@ -20,6 +20,7 @@ import (
 	"github.com/linkinghack/envoy-standalone-gateway/internal/compile"
 	"github.com/linkinghack/envoy-standalone-gateway/internal/conf"
 	"github.com/linkinghack/envoy-standalone-gateway/internal/config"
+	"github.com/linkinghack/envoy-standalone-gateway/internal/console"
 	"github.com/linkinghack/envoy-standalone-gateway/internal/deliver/xds"
 	"github.com/linkinghack/envoy-standalone-gateway/internal/ir"
 	"github.com/linkinghack/envoy-standalone-gateway/internal/state"
@@ -54,6 +55,9 @@ func NewApp(cfg *config.Config, assets fs.FS, log *slog.Logger) (*App, error) {
 	}
 	if log == nil {
 		log = slog.Default()
+	}
+	if assets == nil {
+		assets = console.Assets()
 	}
 	if err := os.MkdirAll(cfg.DataDir, 0o700); err != nil {
 		return nil, fmt.Errorf("core: create data directory: %w", err)

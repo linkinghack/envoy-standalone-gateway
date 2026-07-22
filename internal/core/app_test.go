@@ -31,6 +31,10 @@ func TestAppHTTPConfigurationPublishFlow(t *testing.T) {
 	if response.Code != http.StatusUnauthorized {
 		t.Fatalf("unauthenticated config = %d %s", response.Code, response.Body.String())
 	}
+	response = appRequest(t, app.Handler(), http.MethodGet, "/configuration", nil, nil)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `id="root"`) {
+		t.Fatalf("embedded SPA = %d %s", response.Code, response.Body.String())
+	}
 	response = appRequest(t, app.Handler(), http.MethodPost, "/api/v1/auth/bootstrap", map[string]string{
 		"username": "admin", "password": "long-enough-password",
 	}, nil)
