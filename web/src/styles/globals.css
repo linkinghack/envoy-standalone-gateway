@@ -1,0 +1,80 @@
+@import "@fontsource-variable/ibm-plex-sans/wght.css";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
+@import "@fontsource/newsreader/500.css";
+@import "@fontsource/newsreader/600.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --ink: 16 23 22;
+  --canvas: 234 232 224;
+  --paper: 247 246 240;
+  --line: 199 199 189;
+  --signal: 229 91 45;
+  --healthy: 22 128 112;
+  --muted: 102 108 102;
+  color: rgb(var(--ink));
+  background: rgb(var(--canvas));
+  font-family: "IBM Plex Sans Variable", sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* { box-sizing: border-box; }
+
+html { min-width: 320px; background: rgb(var(--ink)); }
+
+body { margin: 0; min-width: 320px; min-height: 100vh; background: rgb(var(--canvas)); }
+
+button, input, textarea { font: inherit; }
+
+button, a, input, textarea, [tabindex]:not([tabindex="-1"]) { outline-offset: 3px; }
+
+:focus-visible { outline: 2px solid rgb(var(--signal)); }
+
+::selection { color: white; background: rgb(var(--signal)); }
+
+.canvas-grid {
+  background-color: rgb(var(--canvas));
+  background-image:
+    linear-gradient(rgba(16, 23, 22, .035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(16, 23, 22, .035) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+.noise::after {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  pointer-events: none;
+  opacity: .025;
+  content: "";
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.8'/%3E%3C/svg%3E");
+}
+
+.eyebrow {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: .68rem;
+  font-weight: 500;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+}
+
+.metric-value {
+  font-family: "Newsreader", serif;
+  font-variant-numeric: tabular-nums;
+}
+
+.scrollbar-thin { scrollbar-width: thin; scrollbar-color: rgb(var(--line)) transparent; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}

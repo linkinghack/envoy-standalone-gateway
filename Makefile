@@ -25,6 +25,26 @@ fmt: ## gofumpt 格式化
 lint: ## golangci-lint
 	golangci-lint run ./...
 
+.PHONY: web-install
+web-install: ## 安装锁定的管理控制台依赖
+	cd web && npm ci
+
+.PHONY: web-generate
+web-generate: ## 由 OpenAPI 生成管理控制台 TypeScript 类型
+	cd web && npm run generate
+
+.PHONY: web-test
+web-test: ## 运行管理控制台类型检查和单元测试
+	cd web && npm run typecheck && npm run test
+
+.PHONY: web-build
+web-build: ## 构建并同步 Go embed 管理控制台产物
+	cd web && npm run build
+
+.PHONY: web-e2e
+web-e2e: ## 运行管理控制台桌面/移动端浏览器冒烟
+	cd web && npm run e2e
+
 .PHONY: e2e
 e2e: ## S1 真实流量冒烟（docker compose；默认 go test 不触发）
 	e2e/run.sh
