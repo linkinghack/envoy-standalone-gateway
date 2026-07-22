@@ -59,7 +59,7 @@ IP access uses `allow AND NOT deny`; deny always wins. With no allow entries, th
 
 ## 4. TLS and connection protection
 
-Downstream certificate and CA files are verified while compiling. Static output uses file data sources. xDS output distributes server certificates as `crt/<listener>/<index>` SDS Secrets and a client CA as `ca/<listener>` validation-context Secret.
+Downstream certificate and CA files are verified while compiling. Static output uses file data sources. xDS output distributes server certificates as `crt/<listener>/<index>` SDS Secrets and a client CA as `ca/<listener>` validation-context Secret. In P1 those Secrets retain filename DataSources, so every data-plane node must materialize the referenced paths; transporting inline or independently stored secret material across hosts is outside this protocol level.
 
 `Upstream.spec.connection.maxConnections` and `maxPendingRequests` range from 1 through 2147483647 and map to Envoy circuit breakers at DEFAULT priority. Zero or negative values are invalid.
 
