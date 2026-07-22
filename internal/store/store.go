@@ -121,13 +121,16 @@ CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY,
   username TEXT UNIQUE NOT NULL,
   password_hash TEXT NOT NULL,
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  password_updated_at TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS sessions (
   token TEXT PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id),
   created_at TEXT NOT NULL,
+  last_active_at TEXT NOT NULL DEFAULT '',
   expires_at TEXT NOT NULL,
+  absolute_expires_at TEXT NOT NULL DEFAULT '',
   ip TEXT,
   user_agent TEXT
 );
@@ -142,6 +145,7 @@ CREATE TABLE IF NOT EXISTS audit_log (
 );
 CREATE TABLE IF NOT EXISTS certificates (
   name TEXT PRIMARY KEY,
+  subject TEXT NOT NULL DEFAULT '',
   sans_json TEXT NOT NULL DEFAULT '[]',
   not_after TEXT,
   updated_at TEXT NOT NULL
@@ -164,9 +168,23 @@ CREATE TABLE IF NOT EXISTS certificates (
 	for _, alter := range []string{
 		"ALTER TABLE publish_runs ADD COLUMN version_seq INTEGER",
 		"ALTER TABLE publish_runs ADD COLUMN trigger_by TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE users ADD COLUMN password_updated_at TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE sessions ADD COLUMN last_active_at TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE sessions ADD COLUMN absolute_expires_at TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE certificates ADD COLUMN subject TEXT NOT NULL DEFAULT ''",
 	} {
 		if _, err := s.db.ExecContext(ctx, alter); err != nil && !isDuplicateColumn(err) {
 			return fmt.Errorf("upgrade publish_runs: %w", err)
+		}
+	}
+	if version < 2 {
+		if _, err := s.db.ExecContext(ctx, "INSERT INTO schema_migrations(version, applied_at) VALUES(2, ?)", time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+			return fmt.Errorf("record auth schema migration: %w", err)
+		}
+	}
+	if version < 3 {
+		if _, err := s.db.ExecContext(ctx, "INSERT INTO schema_migrations(version, applied_at) VALUES(3, ?)", time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+			return fmt.Errorf("record certificate schema migration: %w", err)
 		}
 	}
 	return nil
@@ -260,6 +278,63 @@ FROM versions WHERE seq = ?`, seq).Scan(
 		return Version{}, fmt.Errorf("parse version created_at: %w", err)
 	}
 	return v, nil
+}
+
+// ListVersions returns immutable versions newest-first and the unpaged total.
+func (s *Store) ListVersions(ctx context.Context, limit, offset int) ([]Version, int, error) {
+	if limit <= 0 || limit > 1000 || offset < 0 {
+		return nil, 0, errors.New("invalid version pagination")
+	}
+	var total int
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM versions WHERE state<>'RESERVED'").Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT seq,created_at,author,message,mode,ir_version,state,parent_seq,rollback_of,stats_json
+		FROM versions WHERE state<>'RESERVED' ORDER BY seq DESC LIMIT ? OFFSET ?`, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer func() { _ = rows.Close() }()
+	versions := make([]Version, 0, min(limit, total))
+	for rows.Next() {
+		version, err := scanVersion(rows)
+		if err != nil {
+			return nil, 0, err
+		}
+		versions = append(versions, version)
+	}
+	return versions, total, rows.Err()
+}
+
+// LatestVersion returns the newest non-reserved version, optionally filtered
+// by exact state. An empty state matches any non-reserved version.
+func (s *Store) LatestVersion(ctx context.Context, state string) (Version, error) {
+	query := `SELECT seq,created_at,author,message,mode,ir_version,state,parent_seq,rollback_of,stats_json
+		FROM versions WHERE state<>'RESERVED'`
+	var args []any
+	if state != "" {
+		query += " AND state=?"
+		args = append(args, state)
+	}
+	query += " ORDER BY seq DESC LIMIT 1"
+	return scanVersion(s.db.QueryRowContext(ctx, query, args...))
+}
+
+type versionScanner interface{ Scan(...any) error }
+
+func scanVersion(scanner versionScanner) (Version, error) {
+	var version Version
+	var created string
+	err := scanner.Scan(&version.Seq, &created, &version.Author, &version.Message, &version.Mode,
+		&version.IRVersion, &version.State, &version.ParentSeq, &version.RollbackOf, &version.StatsJSON)
+	if err != nil {
+		return Version{}, err
+	}
+	version.CreatedAt, err = time.Parse(time.RFC3339Nano, created)
+	if err != nil {
+		return Version{}, fmt.Errorf("parse version created_at: %w", err)
+	}
+	return version, nil
 }
 
 // CreatePublishRun inserts a new run. SQLite's one_active_publish partial
