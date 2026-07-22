@@ -11,14 +11,14 @@ import (
 // TestCertificates 覆盖证书文件存在性、cert/key 配对（openssl 语义，经 crypto/tls）、
 // ref 形态未实现错误与 clientCA 校验（编译层 §3 F2）。
 func TestCertificates(t *testing.T) {
-	t.Run("ref form not implemented", func(t *testing.T) {
+	t.Run("ref requires managed store", func(t *testing.T) {
 		lis := newListener("https", 443, protocol.ProtocolHTTPS)
 		lis.Spec.TLS = &protocol.ListenerTLS{
 			Certificates: []protocol.Certificate{{Ref: "shop-example-com"}},
 		}
 		cs := &protocol.ConfigSet{Listeners: []*protocol.Listener{lis}}
 		assertLinkErrs(t, linkErrs(cs), []wantErr{
-			{kind: protocol.KindListener, name: "https", path: "spec.tls.certificates[0].ref", msg: "not implemented in M0"},
+			{kind: protocol.KindListener, name: "https", path: "spec.tls.certificates[0].ref", msg: "managed certificate store is unavailable"},
 		})
 	})
 

@@ -29,7 +29,8 @@ type EnvoyValidateOpts struct {
 
 // Options 是 Compile 的入参（编译层 §6 公共 API，technical_design §3 冻结签名）。
 type Options struct {
-	Mode           Mode               // ModeXDS | ModeStatic
-	EndpointSource EndpointSource     // k8s 端点注入接口，可 nil（M0 恒 nil）
-	EnvoyValidate  *EnvoyValidateOpts // nil = 跳过 F7
+	Mode                  Mode               // ModeXDS | ModeStatic
+	EndpointSource        EndpointSource     // k8s 端点注入接口，可 nil（M0 恒 nil）
+	EnvoyValidate         *EnvoyValidateOpts // nil = 跳过 F7
+	ManagedCertificateDir string             // ref 证书根目录；空表示托管证书库不可用
 }

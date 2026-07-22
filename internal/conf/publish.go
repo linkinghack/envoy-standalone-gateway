@@ -165,7 +165,9 @@ func (p *Publisher) PublishWithBase(ctx context.Context, author, message, baseHa
 		if draft.Config == nil {
 			return PublishResult{}, failRun("VALIDATE_FAILED", errors.New("abstract draft has no config set"))
 		}
-		out, compileErrs = compile.Compile(draft.Config, compile.Options{Mode: p.Mode})
+		out, compileErrs = compile.Compile(draft.Config, compile.Options{
+			Mode: p.Mode, ManagedCertificateDir: filepath.Join(p.DataDir, "certs"),
+		})
 	}
 	if len(compileErrs) != 0 {
 		run.ErrorsJSON = marshalCompileErrors(compileErrs)

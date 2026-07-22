@@ -3,6 +3,7 @@ package compile
 import (
 	"fmt"
 	"net"
+	"path/filepath"
 	"strings"
 
 	"github.com/linkinghack/envoy-standalone-gateway/internal/protocol"
@@ -36,7 +37,7 @@ func link(cs *protocol.ConfigSet, opts Options, certs certVerifier) (*linked, []
 	errs = append(errs, checkHostnameConflicts(cs, lk)...)
 	errs = append(errs, checkPolicyAttachmentLevels(cs, lk)...)
 	errs = append(errs, checkTLSRules(cs)...)
-	errs = append(errs, checkCertificates(cs, certs)...)
+	errs = append(errs, checkCertificates(cs, certs, opts)...)
 	errs = append(errs, checkKubernetesService(cs, opts)...)
 	return lk, errs
 }
@@ -346,12 +347,12 @@ func checkTLSRules(cs *protocol.ConfigSet) []CompileError {
 }
 
 // checkCertificates 校验证书条目（协议 §3.2，编译层 §3 F2）：
-//   - ref: 形态（管理面证书库）在 M0 未实现，报明确错误；
+//   - ref: 形态解析到托管证书目录并按普通文件对继续校验；
 //   - certFile/keyFile 文件存在、可解析且公钥配对（openssl 语义）；
 //   - clientCA 文件存在且可解析。
 //
 // static 模式下发前还会再查一次，此处早失败。
-func checkCertificates(cs *protocol.ConfigSet, certs certVerifier) []CompileError {
+func checkCertificates(cs *protocol.ConfigSet, certs certVerifier, opts Options) []CompileError {
 	var errs []CompileError
 	for _, l := range cs.Listeners {
 		t := l.Spec.TLS
@@ -361,11 +362,19 @@ func checkCertificates(cs *protocol.ConfigSet, certs certVerifier) []CompileErro
 		for i, c := range t.Certificates {
 			base := fmt.Sprintf("spec.tls.certificates[%d]", i)
 			if c.Ref != "" {
-				errs = append(errs, linkError(l.Origin, protocol.KindListener, l.Metadata.Name,
-					base+".ref",
-					"certificate ref %q is not implemented in M0 (managed certificate store not available yet); use certFile/keyFile",
-					c.Ref))
-				continue
+				if opts.ManagedCertificateDir == "" {
+					errs = append(errs, linkError(l.Origin, protocol.KindListener, l.Metadata.Name,
+						base+".ref", "managed certificate store is unavailable for ref %q", c.Ref))
+					continue
+				}
+				if err := protocol.ValidateName(c.Ref); err != nil {
+					errs = append(errs, linkError(l.Origin, protocol.KindListener, l.Metadata.Name,
+						base+".ref", "invalid managed certificate ref %q", c.Ref))
+					continue
+				}
+				c.CertFile = filepath.Join(opts.ManagedCertificateDir, c.Ref, "tls.crt")
+				c.KeyFile = filepath.Join(opts.ManagedCertificateDir, c.Ref, "tls.key")
+				t.Certificates[i] = c
 			}
 			if err := certs.verifyKeyPair(c.CertFile, c.KeyFile); err != nil {
 				errs = append(errs, linkError(l.Origin, protocol.KindListener, l.Metadata.Name,
