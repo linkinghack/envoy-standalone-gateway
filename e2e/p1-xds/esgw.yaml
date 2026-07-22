@@ -1,0 +1,8 @@
+dataDir: /var/lib/esgw
+deliver:
+  mode: xds
+  xds:
+    listen: 127.0.0.1:18000
+    nodeID: esgw-p1-node
+    nodeCluster: esgw
+    adminAddress: 0.0.0.0:9901

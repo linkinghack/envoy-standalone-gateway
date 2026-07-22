@@ -72,6 +72,19 @@ jobs:
       - name: ADS traffic e2e (docker compose)
         run: e2e/xds/run.sh
 
+  # Sprint 260727 T6：一份组合配置同时走 static validate 与真实 ADS，按支持
+  # 矩阵覆盖全部 P1 数据面能力，且运行时文件全部 docker cp、无宿主 bind mount。
+  e2e-p1-xds:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: true
+      - name: P1 static and ADS traffic matrix
+        run: make e2e-p1-xds
+
   web:
     runs-on: ubuntu-latest
     steps:

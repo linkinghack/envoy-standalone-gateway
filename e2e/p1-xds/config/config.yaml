@@ -1,0 +1,208 @@
+apiVersion: esgw/v1alpha1
+kind: Listener
+metadata: {name: tcp}
+spec: {address: 0.0.0.0, port: 13306, protocol: TCP}
+---
+apiVersion: esgw/v1alpha1
+kind: Listener
+metadata: {name: tls-pass}
+spec: {address: 0.0.0.0, port: 18443, protocol: TLS}
+---
+apiVersion: esgw/v1alpha1
+kind: Listener
+metadata: {name: udp}
+spec: {address: 0.0.0.0, port: 15353, protocol: UDP}
+---
+apiVersion: esgw/v1alpha1
+kind: Route
+metadata: {name: tcp}
+spec: {listeners: [tcp], forward: {upstream: tcp-backend}}
+---
+apiVersion: esgw/v1alpha1
+kind: Route
+metadata: {name: tls-api}
+spec:
+  listeners: [tls-pass]
+  forward: {upstream: tls-api, sniHosts: [api.example.com]}
+---
+apiVersion: esgw/v1alpha1
+kind: Route
+metadata: {name: tls-web}
+spec:
+  listeners: [tls-pass]
+  forward: {upstream: tls-web, sniHosts: [www.example.com]}
+---
+apiVersion: esgw/v1alpha1
+kind: Route
+metadata: {name: udp}
+spec: {listeners: [udp], forward: {upstream: udp-backend}}
+---
+apiVersion: esgw/v1alpha1
+kind: Upstream
+metadata: {name: tcp-backend}
+spec: {endpoints: [{address: 127.0.0.1, port: 23306}]}
+---
+apiVersion: esgw/v1alpha1
+kind: Upstream
+metadata: {name: tls-api}
+spec: {endpoints: [{address: 127.0.0.1, port: 24443}]}
+---
+apiVersion: esgw/v1alpha1
+kind: Upstream
+metadata: {name: tls-web}
+spec: {endpoints: [{address: 127.0.0.1, port: 25443}]}
+---
+apiVersion: esgw/v1alpha1
+kind: Upstream
+metadata: {name: udp-backend}
+spec: {endpoints: [{address: 127.0.0.1, port: 25353}]}
+---
+apiVersion: esgw/v1alpha1
+kind: Listener
+metadata: {name: http-auth}
+spec: {address: 0.0.0.0, port: 18081, protocol: HTTP}
+---
+apiVersion: esgw/v1alpha1
+kind: Listener
+metadata: {name: grpc-auth}
+spec: {address: 0.0.0.0, port: 18082, protocol: HTTP}
+---
+apiVersion: esgw/v1alpha1
+kind: Policy
+metadata: {name: http-auth}
+spec:
+  extAuth:
+    http: {address: "http://127.0.0.1:19000", pathPrefix: /verify}
+    failOpen: true
+---
+apiVersion: esgw/v1alpha1
+kind: Policy
+metadata: {name: grpc-auth}
+spec: {extAuth: {grpc: {address: "127.0.0.1:19001"}}}
+---
+apiVersion: esgw/v1alpha1
+kind: Policy
+metadata: {name: auth-off}
+spec: {extAuth: {disabled: true}}
+---
+apiVersion: esgw/v1alpha1
+kind: Route
+metadata: {name: http-auth}
+spec:
+  listeners: [http-auth]
+  policies: [http-auth]
+  rules:
+    - name: public
+      match: {path: {prefix: /public}}
+      backends: [{upstream: http-backend}]
+      policies: [auth-off]
+    - name: protected
+      match: {path: {prefix: /}}
+      backends: [{upstream: http-backend}]
+---
+apiVersion: esgw/v1alpha1
+kind: Route
+metadata: {name: grpc-auth}
+spec:
+  listeners: [grpc-auth]
+  policies: [grpc-auth]
+  rules:
+    - match: {path: {prefix: /}}
+      backends: [{upstream: http-backend}]
+---
+apiVersion: esgw/v1alpha1
+kind: Listener
+metadata: {name: ip-access}
+spec: {address: 0.0.0.0, port: 18083, protocol: HTTP}
+---
+apiVersion: esgw/v1alpha1
+kind: Listener
+metadata: {name: per-ip}
+spec: {address: 0.0.0.0, port: 18084, protocol: HTTP}
+---
+apiVersion: esgw/v1alpha1
+kind: Listener
+metadata: {name: per-tenant}
+spec: {address: 0.0.0.0, port: 18085, protocol: HTTP}
+---
+apiVersion: esgw/v1alpha1
+kind: Policy
+metadata: {name: private-net}
+spec:
+  ipAccess:
+    allow: [10.246.37.0/24]
+    deny: [10.246.37.9/32]
+---
+apiVersion: esgw/v1alpha1
+kind: Policy
+metadata: {name: client-quota}
+spec: {rateLimit: {requests: 2, unit: hour, burst: 2, key: clientIP, maxKeys: 100}}
+---
+apiVersion: esgw/v1alpha1
+kind: Policy
+metadata: {name: tenant-quota}
+spec: {rateLimit: {requests: 2, unit: hour, burst: 2, key: "header:x-tenant", maxKeys: 100}}
+---
+apiVersion: esgw/v1alpha1
+kind: Route
+metadata: {name: ip-access}
+spec:
+  listeners: [ip-access]
+  policies: [private-net]
+  rules:
+    - match: {path: {prefix: /}}
+      backends: [{upstream: http-backend}]
+---
+apiVersion: esgw/v1alpha1
+kind: Route
+metadata: {name: per-ip}
+spec:
+  listeners: [per-ip]
+  policies: [client-quota]
+  rules:
+    - match: {path: {prefix: /}}
+      backends: [{upstream: http-backend}]
+---
+apiVersion: esgw/v1alpha1
+kind: Route
+metadata: {name: per-tenant}
+spec:
+  listeners: [per-tenant]
+  policies: [tenant-quota]
+  rules:
+    - match: {path: {prefix: /}}
+      backends: [{upstream: http-backend}]
+---
+apiVersion: esgw/v1alpha1
+kind: Listener
+metadata: {name: mtls}
+spec:
+  address: 0.0.0.0
+  port: 18444
+  protocol: HTTPS
+  tls:
+    certificates:
+      - {certFile: testdata/certs/www.crt, keyFile: testdata/certs/www.key}
+    clientCA: testdata/certs/client-ca.crt
+---
+apiVersion: esgw/v1alpha1
+kind: Route
+metadata: {name: mtls}
+spec:
+  listeners: [mtls]
+  hostnames: [www.example.com]
+  rules:
+    - match: {path: {prefix: /}}
+      backends: [{upstream: mtls-backend}]
+---
+apiVersion: esgw/v1alpha1
+kind: Upstream
+metadata: {name: http-backend}
+spec: {endpoints: [{address: 127.0.0.1, port: 18080}]}
+---
+apiVersion: esgw/v1alpha1
+kind: Upstream
+metadata: {name: mtls-backend}
+spec:
+  endpoints: [{address: 127.0.0.1, port: 18080}]
+  connection: {maxConnections: 1, maxPendingRequests: 1}

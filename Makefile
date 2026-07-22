@@ -77,6 +77,10 @@ e2e-policy: ## IPAccess 与动态 key 本地限流三版本真实流量 e2e
 e2e-mtls-circuit: ## downstream mTLS 与熔断三版本真实流量 e2e
 	e2e/mtls-circuit/run.sh
 
+.PHONY: e2e-p1-xds
+e2e-p1-xds: ## P1 全功能 static/ADS 三版本组合真实流量 e2e
+	e2e/p1-xds/run.sh
+
 .PHONY: golden-update
 golden-update: ## 刷新 golden 快照（diff 必须人工评审）
 	go test ./internal/golden -update

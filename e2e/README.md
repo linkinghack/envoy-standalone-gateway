@@ -31,6 +31,10 @@ Envoy 版本上覆盖 allow/deny、不可伪造的来源边界以及 clientIP/he
 下游 mTLS 与熔断见 [`mtls-circuit/`](mtls-circuit/)（`make e2e-mtls-circuit`）：
 三版本覆盖缺失/不可信/可信客户端证书和并发请求触发真实 503 overflow。
 
+P1 组合 ADS 闭环见 [`p1-xds/`](p1-xds/)（`make e2e-p1-xds`）：同一份配置先
+通过三版本 static validate，再逐版本连接真实 ADS，覆盖上述 L4、外部鉴权、策略、
+mTLS 和熔断能力，并断言 LDS/RDS/CDS/EDS/SDS 版本与 ACK、无 NACK。
+
 默认 `go test ./...` 不触发（工程基线 §3：e2e 依赖 docker）。
 
 ## 关键决策
