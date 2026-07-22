@@ -319,6 +319,20 @@ apiVersion: esgw/v1alpha1
 kind: Policy
 metadata: {name: p}
 spec:
+  extAuth: {grpc: {address: "[::1]:9000"}, failOpen: true}
+`)
+	expectLoadOK(t, `
+apiVersion: esgw/v1alpha1
+kind: Policy
+metadata: {name: p}
+spec:
+  extAuth: {http: {address: "https://auth.example.com:8443", pathPrefix: /check, caFile: /etc/ssl/auth-ca.pem}}
+`)
+	expectLoadOK(t, `
+apiVersion: esgw/v1alpha1
+kind: Policy
+metadata: {name: p}
+spec:
   ipAccess: {allow: [10.0.0.0/8], deny: [192.168.0.1/32]}
 `)
 	expectLoadOK(t, `
@@ -379,6 +393,55 @@ metadata: {name: p}
 spec:
   extAuth: {grpc: {address: a}, http: {address: b}}
 `, `mutually exclusive`},
+		{"extAuth disabled with backend", `
+apiVersion: esgw/v1alpha1
+kind: Policy
+metadata: {name: p}
+spec:
+  extAuth: {disabled: true, grpc: {address: "127.0.0.1:9000"}}
+`, `disabled cannot be combined`},
+		{"extAuth grpc missing port", `
+apiVersion: esgw/v1alpha1
+kind: Policy
+metadata: {name: p}
+spec:
+  extAuth: {grpc: {address: auth.internal}}
+`, `invalid host:port`},
+		{"extAuth http bad scheme", `
+apiVersion: esgw/v1alpha1
+kind: Policy
+metadata: {name: p}
+spec:
+  extAuth: {http: {address: "grpc://auth.internal:9000"}}
+`, `invalid HTTP(S) URL`},
+		{"extAuth http embedded path", `
+apiVersion: esgw/v1alpha1
+kind: Policy
+metadata: {name: p}
+spec:
+  extAuth: {http: {address: "http://auth.internal:9000/check"}}
+`, `path, query and fragment are not allowed`},
+		{"extAuth http pathPrefix", `
+apiVersion: esgw/v1alpha1
+kind: Policy
+metadata: {name: p}
+spec:
+  extAuth: {http: {address: "http://auth.internal:9000", pathPrefix: check}}
+`, `must start with /`},
+		{"extAuth https missing trust", `
+apiVersion: esgw/v1alpha1
+kind: Policy
+metadata: {name: p}
+spec:
+  extAuth: {http: {address: "https://auth.internal:9443"}}
+`, `caFile is required`},
+		{"extAuth http with TLS fields", `
+apiVersion: esgw/v1alpha1
+kind: Policy
+metadata: {name: p}
+spec:
+  extAuth: {http: {address: "http://auth.internal:9000", insecureSkipVerify: true}}
+`, `only allowed for HTTPS`},
 		{"ipAccess bad CIDR", `
 apiVersion: esgw/v1alpha1
 kind: Policy

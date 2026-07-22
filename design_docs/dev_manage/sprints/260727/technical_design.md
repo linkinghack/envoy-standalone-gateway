@@ -20,7 +20,7 @@ TCP/TLS/UDP cluster 复用现有 Upstream。Envoy 的 Cluster 在此路径承载
 
 Envoy ext_authz 的服务配置位于 HCM filter 而非 per-route。一个 Listener 内所有最终启用的 extAuth 必须解析为同一服务、协议和 `failOpen`；否则 F3 报定位错误。filter 顺序固定为 `rbac → cors → jwt_authn → ext_authz → local_ratelimit → router`。未挂 extAuth 或 `disabled: true` 的 route 写入 `ExtAuthzPerRoute.disabled=true`。
 
-HTTP 地址解析为 scheme/host/port，自动生成 STRICT_DNS/STATIC auth cluster；gRPC `host:port` 生成 HTTP/2 cluster。cluster 名由规范化配置哈希派生，避免与用户 Upstream 冲突。禁止 userinfo、fragment、非 http(s) scheme 和缺失端口/主机。
+HTTP 地址解析为 scheme/host/port，自动生成 STRICT_DNS/STATIC auth cluster；gRPC `host:port` 生成 HTTP/2 cluster。cluster 名由规范化配置哈希派生，避免与用户 Upstream 冲突。禁止 userinfo、path/query/fragment、非 http(s) scheme 和缺失端口/主机。HTTPS 必须显式提供 `caFile`，或明确声明 `insecureSkipVerify: true`；不得虚构 Envoy 会自动使用系统 CA 的隐式默认。
 
 ### 2.2 IPAccess
 

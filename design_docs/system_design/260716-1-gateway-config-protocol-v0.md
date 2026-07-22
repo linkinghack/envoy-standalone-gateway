@@ -261,7 +261,7 @@ v0/v1 策略类型清单（与 FR-1.3 对齐）：
 | `cors` | CORS | `allowOrigins`（支持通配）、`allowMethods`、`allowHeaders`、`allowCredentials`、`maxAge` | P1 |
 | `rateLimit` | 本地限流（单实例令牌桶） | 见上例；分布式限流为后续版本 | P1 |
 | `jwt` | JWT 校验 | `issuer`、`audiences`、`jwks.{uri,file}`、`forwardPayloadHeader`、`optional` | P1 |
-| `extAuth` | 外部鉴权 | `grpc.address` 或 `http.{address,pathPrefix}`、`failOpen`、`disabled`（局部关闭，见规则 3a） | P1 |
+| `extAuth` | 外部鉴权 | `grpc.address` 或 `http.{address,pathPrefix,caFile,insecureSkipVerify}`、`failOpen`、`disabled`（局部关闭，见规则 3a） | P1 |
 | `ipAccess` | IP 黑白名单 | `allow[]` / `deny[]`（CIDR） | P1 |
 | `basicAuth` | Basic 认证 | `users`（htpasswd 文件或内联哈希） | P2 |
 

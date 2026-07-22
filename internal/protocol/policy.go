@@ -4,7 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/netip"
+	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/invopop/jsonschema"
@@ -92,8 +95,10 @@ type ExtAuthGRPC struct {
 
 // ExtAuthHTTP 是 HTTP 外部鉴权服务。
 type ExtAuthHTTP struct {
-	Address    string `json:"address"`
-	PathPrefix string `json:"pathPrefix,omitempty"`
+	Address            string `json:"address"`
+	PathPrefix         string `json:"pathPrefix,omitempty"`
+	CAFile             string `json:"caFile,omitempty"`
+	InsecureSkipVerify bool   `json:"insecureSkipVerify,omitempty"`
 }
 
 // IPAccessPolicy 是 IP 黑白名单（P1）。
@@ -184,6 +189,16 @@ func (s *PolicySpec) validate(field string) error {
 			return fmt.Errorf("%s.extAuth: grpc and http are mutually exclusive", field)
 		case e.GRPC == nil && e.HTTP == nil && !e.Disabled:
 			return fmt.Errorf("%s.extAuth: one of grpc | http is required (unless disabled: true)", field)
+		case e.Disabled && (e.GRPC != nil || e.HTTP != nil):
+			return fmt.Errorf("%s.extAuth: disabled cannot be combined with grpc or http", field)
+		case e.GRPC != nil:
+			if err := validateHostPort(e.GRPC.Address); err != nil {
+				return fmt.Errorf("%s.extAuth.grpc.address: %v", field, err)
+			}
+		case e.HTTP != nil:
+			if err := validateExtAuthHTTP(e.HTTP); err != nil {
+				return fmt.Errorf("%s.extAuth.http: %v", field, err)
+			}
 		}
 	}
 	if ip := s.IPAccess; ip != nil {
@@ -200,6 +215,44 @@ func (s *PolicySpec) validate(field string) error {
 	}
 	if b := s.BasicAuth; b != nil && b.Users == "" {
 		return fmt.Errorf("%s.basicAuth.users: is required", field)
+	}
+	return nil
+}
+
+func validateHostPort(address string) error {
+	if address == "" || strings.TrimSpace(address) != address {
+		return fmt.Errorf("must be a non-empty host:port without surrounding whitespace")
+	}
+	host, port, err := net.SplitHostPort(address)
+	if err != nil || host == "" {
+		return fmt.Errorf("invalid host:port %q", address)
+	}
+	n, err := strconv.Atoi(port)
+	if err != nil || n < 1 || n > 65535 {
+		return fmt.Errorf("invalid port %q (want 1-65535)", port)
+	}
+	return nil
+}
+
+func validateExtAuthHTTP(h *ExtAuthHTTP) error {
+	u, err := url.Parse(h.Address)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" {
+		return fmt.Errorf("address: invalid HTTP(S) URL %q", h.Address)
+	}
+	if u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.EscapedPath() != "" && u.EscapedPath() != "/") {
+		return fmt.Errorf("address: userinfo, path, query and fragment are not allowed")
+	}
+	if err := validateHostPort(u.Host); err != nil {
+		return fmt.Errorf("address: %v", err)
+	}
+	if h.PathPrefix != "" && !strings.HasPrefix(h.PathPrefix, "/") {
+		return fmt.Errorf("pathPrefix: must start with /")
+	}
+	if u.Scheme == "https" && h.CAFile == "" && !h.InsecureSkipVerify {
+		return fmt.Errorf("caFile is required for HTTPS unless insecureSkipVerify is true")
+	}
+	if u.Scheme == "http" && (h.CAFile != "" || h.InsecureSkipVerify) {
+		return fmt.Errorf("caFile and insecureSkipVerify are only allowed for HTTPS")
 	}
 	return nil
 }

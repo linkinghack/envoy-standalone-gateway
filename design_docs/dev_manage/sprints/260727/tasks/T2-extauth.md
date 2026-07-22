@@ -10,4 +10,4 @@
 
 ## 进展
 
-- 待开始。
+- 进行中：完成 gRPC `host:port`、HTTP(S) URL/显式端口/pathPrefix 与 disabled 互斥的协议校验；下一步实现 Listener 级 provider 归一化、filter/cluster 和 per-route disable。
