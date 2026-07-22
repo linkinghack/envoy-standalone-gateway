@@ -380,6 +380,53 @@ func (s *Store) UpdatePublishRun(ctx context.Context, r PublishRun) error {
 	return err
 }
 
+// TransitionPublish atomically updates the durable publish run and its version.
+// When supersede is true, every other effective version is first moved to
+// superseded so the database can never expose two effective versions after a
+// successful confirmation.
+func (s *Store) TransitionPublish(ctx context.Context, runID, versionSeq int64, runState, versionState string, supersede bool) error {
+	if runID <= 0 || versionSeq <= 0 || runState == "" || versionState == "" {
+		return errors.New("publish transition requires run, version and states")
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	var linked sql.NullInt64
+	if err := tx.QueryRowContext(ctx, "SELECT version_seq FROM publish_runs WHERE id=?", runID).Scan(&linked); err != nil {
+		return err
+	}
+	if !linked.Valid || linked.Int64 != versionSeq {
+		return fmt.Errorf("publish run %d is not linked to version %d", runID, versionSeq)
+	}
+	if supersede {
+		if _, err := tx.ExecContext(ctx, "UPDATE versions SET state='superseded' WHERE state='effective' AND seq<>?", versionSeq); err != nil {
+			return err
+		}
+	}
+	result, err := tx.ExecContext(ctx, "UPDATE versions SET state=? WHERE seq=? AND state<>'RESERVED'", versionState, versionSeq)
+	if err != nil {
+		return err
+	}
+	if changed, err := result.RowsAffected(); err != nil {
+		return err
+	} else if changed != 1 {
+		return fmt.Errorf("version %d is not publishable", versionSeq)
+	}
+	result, err = tx.ExecContext(ctx, "UPDATE publish_runs SET state=?,updated_at=? WHERE id=? AND version_seq=?",
+		runState, time.Now().UTC().Format(time.RFC3339Nano), runID, versionSeq)
+	if err != nil {
+		return err
+	}
+	if changed, err := result.RowsAffected(); err != nil {
+		return err
+	} else if changed != 1 {
+		return fmt.Errorf("publish run %d transition did not apply", runID)
+	}
+	return tx.Commit()
+}
+
 // GetPublishRun loads a run by id.
 func (s *Store) GetPublishRun(ctx context.Context, id int64) (PublishRun, error) {
 	var r PublishRun

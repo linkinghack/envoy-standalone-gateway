@@ -2,6 +2,7 @@ package conf
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -79,13 +80,7 @@ func (p *Publisher) handleConfirmEvent(ctx context.Context, event state.VersionC
 		if event.Status == "CONFIRMED" {
 			return p.confirmLocked(ctx, run, v, event.Observed)
 		}
-		run.State = "TIMEOUT"
-		v.State = "timeout"
-		if err := p.Store.InsertVersion(ctx, v); err != nil {
-			return err
-		}
-		run.UpdatedAt = time.Now().UTC()
-		return p.Store.UpdatePublishRun(ctx, run)
+		return p.Store.TransitionPublish(ctx, run.ID, v.Seq, "TIMEOUT", "timeout", false)
 	}
 	return nil
 }
@@ -128,6 +123,10 @@ func (p *Publisher) PublishWithBase(ctx context.Context, author, message, baseHa
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	return p.publishWithBaseLocked(ctx, author, message, baseHash, 0)
+}
+
+func (p *Publisher) publishWithBaseLocked(ctx context.Context, author, message, baseHash string, rollbackOf int64) (PublishResult, error) {
 	draft, loadErrs, err := LoadDraft(p.DataDir)
 	if err != nil {
 		return PublishResult{}, err
@@ -186,6 +185,12 @@ func (p *Publisher) PublishWithBase(ctx context.Context, author, message, baseHa
 	if err := p.Store.UpdatePublishRun(ctx, run); err != nil {
 		return PublishResult{}, err
 	}
+	parentSeq := int64(0)
+	if latest, latestErr := p.Store.LatestVersion(ctx, ""); latestErr == nil {
+		parentSeq = latest.Seq
+	} else if !errors.Is(latestErr, sql.ErrNoRows) {
+		return PublishResult{}, failRun("PUBLISH_FAILED", fmt.Errorf("read parent version: %w", latestErr))
+	}
 	seq, err := p.Store.NextVersionSeq(ctx)
 	if err != nil {
 		return PublishResult{}, failRun("PUBLISH_FAILED", fmt.Errorf("reserve version: %w", err))
@@ -199,12 +204,7 @@ func (p *Publisher) PublishWithBase(ctx context.Context, author, message, baseHa
 	meta := SnapshotMeta{
 		Seq: seq, CreatedAt: now.Format(time.RFC3339Nano), Author: author,
 		Message: message, Mode: string(p.Mode), IRVersion: out.Version,
-		ParentSeq: func() int64 {
-			if seq > 1 {
-				return seq - 1
-			}
-			return 0
-		}(),
+		ParentSeq: parentSeq, RollbackOf: rollbackOf,
 		State: "publishing", Stats: map[string]int{
 			"listeners": len(out.Listeners), "clusters": len(out.Clusters),
 			"routes": len(out.Routes), "endpoints": len(out.Endpoints),
@@ -214,8 +214,8 @@ func (p *Publisher) PublishWithBase(ctx context.Context, author, message, baseHa
 	if _, err := Snapshot(p.DataDir, seq, meta); err != nil {
 		return PublishResult{}, failRun("PUBLISH_FAILED", err)
 	}
-	if seq > 1 {
-		if diff, diffErr := DiffSnapshots(p.DataDir, seq-1, seq); diffErr == nil {
+	if parentSeq > 0 {
+		if diff, diffErr := DiffSnapshots(p.DataDir, parentSeq, seq); diffErr == nil {
 			if payload, marshalErr := json.Marshal(diff); marshalErr == nil {
 				run.DiffJSON = string(payload)
 				run.UpdatedAt = time.Now().UTC()
@@ -229,13 +229,7 @@ func (p *Publisher) PublishWithBase(ctx context.Context, author, message, baseHa
 	v := store.Version{
 		Seq: seq, CreatedAt: now, Author: author, Message: message,
 		Mode: string(p.Mode), IRVersion: out.Version, State: "publishing",
-		ParentSeq: func() int64 {
-			if seq > 1 {
-				return seq - 1
-			}
-			return 0
-		}(),
-		StatsJSON: string(stats),
+		ParentSeq: parentSeq, RollbackOf: rollbackOf, StatsJSON: string(stats),
 	}
 	if err := p.Store.InsertVersion(ctx, v); err != nil {
 		return PublishResult{}, failRun("PUBLISH_FAILED", fmt.Errorf("record version: %w", err))
@@ -290,13 +284,44 @@ func (p *Publisher) Confirm(ctx context.Context, runID int64, observedIRVersion 
 }
 
 func (p *Publisher) confirmLocked(ctx context.Context, run store.PublishRun, v store.Version, observedIRVersion string) error {
-	v.State = "effective"
-	if err := p.Store.InsertVersion(ctx, v); err != nil {
+	if observedIRVersion != v.IRVersion {
+		return fmt.Errorf("confirm version mismatch: observed %s, want %s", observedIRVersion, v.IRVersion)
+	}
+	return p.Store.TransitionPublish(ctx, run.ID, v.Seq, "EFFECTIVE", "effective", true)
+}
+
+// Recheck moves a timed-out publish back to confirmation and asks M-STATE to
+// observe the same immutable IR version again. It never applies the config a
+// second time and cannot manufacture a positive confirmation.
+func (p *Publisher) Recheck(ctx context.Context, runID int64) error {
+	if p == nil || p.Store == nil {
+		return errors.New("publisher recheck requires store and state service")
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.state == nil {
+		return errors.New("publisher recheck requires store and state service")
+	}
+	run, err := p.Store.GetPublishRun(ctx, runID)
+	if err != nil {
 		return err
 	}
-	run.State = "EFFECTIVE"
-	run.UpdatedAt = time.Now().UTC()
-	return p.Store.UpdatePublishRun(ctx, run)
+	if run.State != "TIMEOUT" {
+		return fmt.Errorf("publish run %d is %s, want TIMEOUT", runID, run.State)
+	}
+	v, err := p.Store.GetVersion(ctx, run.VersionSeq)
+	if err != nil {
+		return err
+	}
+	if err := p.Store.TransitionPublish(ctx, run.ID, v.Seq, "CONFIRMING", "confirming", false); err != nil {
+		return err
+	}
+	timeout := p.ConfirmTimeout
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+	p.state.ExpectVersion(v.IRVersion, timeout)
+	return nil
 }
 
 func marshalErrors(values []string) string {

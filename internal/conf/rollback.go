@@ -34,22 +34,29 @@ func RollbackSource(dataDir string, seq int64, force bool) error {
 	if err != nil {
 		return err
 	}
-	if err := os.RemoveAll(filepath.Join(dataDir, "config.d")); err != nil {
-		return err
+	paths := make([]string, 0, len(files))
+	for path := range files {
+		paths = append(paths, filepath.ToSlash(path))
 	}
-	if err := os.MkdirAll(filepath.Join(dataDir, "config.d"), 0o700); err != nil {
-		return err
+	sort.Strings(paths)
+	mode := ModeAbstract
+	if len(paths) == 1 && paths[0] == "native.yaml" {
+		mode = ModeNative
 	}
-	if err := os.Remove(filepath.Join(dataDir, "native.yaml")); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	for rel, src := range files {
-		dst := filepath.Join(dataDir, rel)
-		if err := copyFile(src, dst); err != nil {
+	replacement := make([]SourceFile, 0, len(paths))
+	for _, path := range paths {
+		content, err := os.ReadFile(files[filepath.FromSlash(path)])
+		if err != nil {
 			return err
 		}
+		replacement = append(replacement, SourceFile{Path: path, Content: content})
 	}
-	return nil
+	expected, err := DraftHash(dataDir)
+	if err != nil {
+		return err
+	}
+	_, err = ReplaceDraft(dataDir, mode, replacement, expected)
+	return err
 }
 
 func sourceFilesFrom(root string) (map[string]string, error) {
@@ -73,12 +80,7 @@ func sourceFilesFrom(root string) (map[string]string, error) {
 		if err != nil {
 			return nil, err
 		}
-		b, err := os.ReadFile(path)
-		if err != nil {
-			return nil, err
-		}
 		out[rel] = path
-		_ = b
 	}
 	return out, nil
 }
@@ -86,26 +88,17 @@ func sourceFilesFrom(root string) (map[string]string, error) {
 // RollbackPublish restores a snapshot and publishes it through the regular
 // compiler/deliverer path, recording rollback metadata in the resulting version.
 func (p *Publisher) RollbackPublish(ctx context.Context, seq int64, author, message string, force bool) (PublishResult, error) {
-	if p == nil || p.Store == nil {
-		return PublishResult{}, errors.New("publisher requires store")
+	if p == nil || p.Store == nil || p.Deliver == nil {
+		return PublishResult{}, errors.New("publisher requires store and deliverer")
 	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	if err := RollbackSource(p.DataDir, seq, force); err != nil {
 		return PublishResult{}, err
 	}
-	res, err := p.Publish(ctx, author, message)
+	hash, err := DraftHash(p.DataDir)
 	if err != nil {
-		return res, err
+		return PublishResult{}, err
 	}
-	v, err := p.Store.GetVersion(ctx, res.Seq)
-	if err != nil {
-		return res, err
-	}
-	v.RollbackOf = seq
-	if res.Seq > 1 {
-		v.ParentSeq = res.Seq - 1
-	}
-	if err := p.Store.InsertVersion(ctx, v); err != nil {
-		return res, err
-	}
-	return res, nil
+	return p.publishWithBaseLocked(ctx, author, message, hash, seq)
 }

@@ -2,6 +2,7 @@ package conf
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,13 +18,14 @@ func TestDiffSnapshotsAndRollbackSource(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(data, "config.d", "a.yaml")
-	if err := os.WriteFile(path, []byte("one\n"), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(listenerYAML), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := Snapshot(data, 1, SnapshotMeta{Seq: 1}); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, []byte("two\n"), 0o600); err != nil {
+	changed := strings.ReplaceAll(listenerYAML, "8080", "8081")
+	if err := os.WriteFile(path, []byte(changed), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := Snapshot(data, 2, SnapshotMeta{Seq: 2}); err != nil {
@@ -33,14 +35,14 @@ func TestDiffSnapshotsAndRollbackSource(t *testing.T) {
 	if err != nil || len(diff.Files) != 1 || diff.Files[0].Status != "changed" {
 		t.Fatalf("diff=%+v err=%v", diff, err)
 	}
-	if !strings.Contains(diff.Files[0].Patch, "- one") || !strings.Contains(diff.Files[0].Patch, "+ two") {
+	if !strings.Contains(diff.Files[0].Patch, "-   port: 8080") || !strings.Contains(diff.Files[0].Patch, "+   port: 8081") {
 		t.Fatalf("patch=%q", diff.Files[0].Patch)
 	}
 	if err := RollbackSource(data, 1, true); err != nil {
 		t.Fatal(err)
 	}
 	got, err := os.ReadFile(path)
-	if err != nil || string(got) != "one\n" {
+	if err != nil || string(got) != listenerYAML {
 		t.Fatalf("rollback content=%q err=%v", got, err)
 	}
 }
@@ -143,13 +145,13 @@ func TestRollbackSourceRequiresForceForExistingDraft(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(data, "config.d", "a.yaml")
-	if err := os.WriteFile(path, []byte("one\n"), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(listenerYAML), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := Snapshot(data, 1, SnapshotMeta{Seq: 1}); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, []byte("two\n"), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(strings.ReplaceAll(listenerYAML, "8080", "8081")), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := RollbackSource(data, 1, false); err == nil {
@@ -159,8 +161,34 @@ func TestRollbackSourceRequiresForceForExistingDraft(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err := os.ReadFile(path)
-	if err != nil || string(got) != "one\n" {
+	if err != nil || string(got) != listenerYAML {
 		t.Fatalf("got=%q err=%v", got, err)
+	}
+}
+
+func TestRollbackSourceRestoresNativeModeThroughAtomicReplacement(t *testing.T) {
+	data := t.TempDir()
+	native := SourceFile{Path: "native.yaml", Content: []byte("node: {id: native-node}\nstatic_resources: {}\n")}
+	nativeHash, err := ReplaceDraft(data, ModeNative, []SourceFile{native}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Snapshot(data, 1, SnapshotMeta{Seq: 1, Mode: ModeNative}); err != nil {
+		t.Fatal(err)
+	}
+	abstract := SourceFile{Path: "config.d/listener.yaml", Content: []byte(listenerYAML)}
+	if _, err := ReplaceDraft(data, ModeAbstract, []SourceFile{abstract}, nativeHash); err != nil {
+		t.Fatal(err)
+	}
+	if err := RollbackSource(data, 1, true); err != nil {
+		t.Fatal(err)
+	}
+	draft, loadErrs, err := LoadDraft(data)
+	if err != nil || len(loadErrs) != 0 || draft.Mode != ModeNative {
+		t.Fatalf("draft=%+v loadErrs=%v err=%v", draft, loadErrs, err)
+	}
+	if _, err := os.Stat(filepath.Join(data, "config.d", "listener.yaml")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("abstract source survived native rollback: %v", err)
 	}
 }
 

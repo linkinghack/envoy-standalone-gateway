@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -128,6 +129,36 @@ func TestPublishRunLifecycle(t *testing.T) {
 	active, err := s.ActivePublishRuns(ctx)
 	if err != nil || len(active) != 0 {
 		t.Fatalf("active=%+v err=%v", active, err)
+	}
+}
+
+func TestTransitionPublishSupersedesPreviousEffectiveAtomically(t *testing.T) {
+	ctx := context.Background()
+	s, err := Open(filepath.Join(t.TempDir(), "esgw.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	for seq, state := range map[int64]string{1: "effective", 2: "confirming"} {
+		if err := s.InsertVersion(ctx, Version{Seq: seq, Author: "admin", Mode: "xds", IRVersion: fmt.Sprintf("ir-%d", seq), State: state}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	runID, err := s.CreatePublishRun(ctx, PublishRun{VersionSeq: 2, State: "CONFIRMING"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.TransitionPublish(ctx, runID, 2, "EFFECTIVE", "effective", true); err != nil {
+		t.Fatal(err)
+	}
+	oldVersion, _ := s.GetVersion(ctx, 1)
+	newVersion, _ := s.GetVersion(ctx, 2)
+	run, _ := s.GetPublishRun(ctx, runID)
+	if oldVersion.State != "superseded" || newVersion.State != "effective" || run.State != "EFFECTIVE" {
+		t.Fatalf("old=%s new=%s run=%s", oldVersion.State, newVersion.State, run.State)
+	}
+	if err := s.TransitionPublish(ctx, runID, 99, "EFFECTIVE", "effective", true); err == nil {
+		t.Fatal("expected mismatched run/version transition to fail")
 	}
 }
 

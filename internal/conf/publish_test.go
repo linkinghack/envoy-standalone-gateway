@@ -105,6 +105,47 @@ func TestPublisherPublishWithBaseAndConfirm(t *testing.T) {
 	}
 }
 
+func TestPublisherConfirmationSupersedesPreviousEffective(t *testing.T) {
+	data := t.TempDir()
+	if err := writeMinimalDraft(data); err != nil {
+		t.Fatal(err)
+	}
+	st, err := store.Open(filepath.Join(data, "esgw.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	pub := &Publisher{DataDir: data, Store: st, Deliver: &fakeDeliver{}, Mode: compile.ModeXDS}
+	first, err := pub.Publish(context.Background(), "alice", "first")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(data, "config.d", "listener.yaml")
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(strings.Replace(string(body), "8080", "8082", 2)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	second, err := pub.PublishWithBase(context.Background(), "bob", "second", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, _ := st.GetVersion(context.Background(), first.Seq)
+	if before.State != "effective" {
+		t.Fatalf("previous version changed before confirmation: %s", before.State)
+	}
+	if err := pub.Confirm(context.Background(), second.RunID, second.IRVersion); err != nil {
+		t.Fatal(err)
+	}
+	previous, _ := st.GetVersion(context.Background(), first.Seq)
+	current, _ := st.GetVersion(context.Background(), second.Seq)
+	if previous.State != "superseded" || current.State != "effective" {
+		t.Fatalf("previous=%s current=%s", previous.State, current.State)
+	}
+}
+
 func TestPublisherAutoConfirmsFromStateEvent(t *testing.T) {
 	data := t.TempDir()
 	if err := writeMinimalDraft(data); err != nil {
@@ -141,6 +182,52 @@ func TestPublisherAutoConfirmsFromStateEvent(t *testing.T) {
 	}
 	run, _ := st.GetPublishRun(context.Background(), res.RunID)
 	t.Fatalf("run did not auto-confirm: %+v", run)
+}
+
+func TestPublisherRechecksTimedOutConfirmation(t *testing.T) {
+	data := t.TempDir()
+	if err := writeMinimalDraft(data); err != nil {
+		t.Fatal(err)
+	}
+	st, err := store.Open(filepath.Join(data, "esgw.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	admin := &fakeStateAdmin{responses: map[string][]byte{
+		"/server_info":             []byte(`{"version":"1.39","state":"LIVE"}`),
+		"/config_dump?include_eds": []byte(`{"configs":[{"version_info":"old"}]}`),
+		"/clusters?format=json":    []byte(`{"cluster_statuses":[]}`),
+		"/certs":                   []byte(`{"certificates":[]}`),
+	}}
+	stateService := state.New("node-1", admin)
+	pub := &Publisher{DataDir: data, Store: st, Deliver: &fakeDeliver{}, Mode: compile.ModeXDS, ConfirmTimeout: 10 * time.Millisecond}
+	stop := pub.AttachState(stateService)
+	t.Cleanup(stop)
+	res, err := pub.PublishWithBase(context.Background(), "alice", "timeout then recheck", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitPublishRunState(t, st, res.RunID, "TIMEOUT")
+	admin.set("/config_dump?include_eds", []byte(`{"configs":[{"version_info":"`+res.IRVersion+`"}]}`))
+	if err := pub.Recheck(context.Background(), res.RunID); err != nil {
+		t.Fatal(err)
+	}
+	waitPublishRunState(t, st, res.RunID, "EFFECTIVE")
+}
+
+func waitPublishRunState(t *testing.T, st *store.Store, runID int64, want string) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		run, err := st.GetPublishRun(context.Background(), runID)
+		if err == nil && run.State == want {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	run, _ := st.GetPublishRun(context.Background(), runID)
+	t.Fatalf("publish run state=%s, want %s", run.State, want)
 }
 
 type fakeStateAdmin struct {
@@ -225,8 +312,16 @@ spec:
 	if err != nil {
 		t.Fatal(err)
 	}
-	if version.State != "effective" || version.RollbackOf != first.Seq || version.ParentSeq != second.Seq {
+	if rolled.State != "confirming" || version.State != "confirming" || version.RollbackOf != first.Seq || version.ParentSeq != second.Seq {
 		t.Fatalf("rollback version = %+v", version)
+	}
+	if err := pub.Confirm(context.Background(), rolled.RunID, rolled.IRVersion); err != nil {
+		t.Fatal(err)
+	}
+	version, _ = st.GetVersion(context.Background(), rolled.Seq)
+	previous, _ := st.GetVersion(context.Background(), second.Seq)
+	if version.State != "effective" || previous.State != "superseded" {
+		t.Fatalf("confirmed rollback=%s previous=%s", version.State, previous.State)
 	}
 	got, err := os.ReadFile(path)
 	if err != nil {
