@@ -6,7 +6,7 @@ docker_bin=${DOCKER:-docker}
 
 for path in \
 	docs/README.md docs/quickstart.md docs/configuration.md docs/operations.md \
-	docs/backup-restore.md docs/upgrade.md docs/security.md \
+	docs/backup-restore.md docs/upgrade.md docs/security.md docs/release.md \
 	packaging/examples/quickstart-gateway.yaml \
 	design_docs/system_design/260716-1-gateway-config-protocol-v0.md; do
 	test -e "$root/$path"

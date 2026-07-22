@@ -1,6 +1,6 @@
 # 260722-1 M1 剩余工程实施计划（S5–S8）
 
-- **状态**：生效（Active）
+- **状态**：已完成（2026-07-22，S5–S8 全部验收，M1 收口）
 - **范围**：在 S1–S4 已完成的协议、编译、xDS、配置域和状态域之上，完成管理 API、P0 控制台、static/进程托管与 M1 交付物。
 - **上游**：[`../260719-1-dev-roadmap.md`](../260719-1-dev-roadmap.md)、[`../../system_design/260717-3-console-api-design.md`](../../system_design/260717-3-console-api-design.md)、[`../../system_design/260717-1-deliver-layer-design.md`](../../system_design/260717-1-deliver-layer-design.md)
 

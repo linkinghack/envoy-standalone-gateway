@@ -34,7 +34,7 @@ architecture §8 计划的全部 7 份模块详细设计已完成并交叉互认
 | **S5 (260723)** | M1 | 管理 API | spec-first `api/openapi.yaml` + 生成一致性门禁；鉴权/会话/CSRF/引导；配置域、状态、证书库 P0 REST 端点；SPA 静态资源服务骨架 | [控制台 API](../system_design/260717-3-console-api-design.md) §3~§5、[M1 工程实施计划](engineering_plan/260722-1-m1-completion-plan.md) | S3、S4；✅ 已完成（2026-07-22，[A1~A7 验收](sprints/260723/plan_todos_trace.md)）：42 operation 全实现、生成 clean-diff、唯一 `core.App`、HTTP 发布闭环和全量质量门禁通过 |
 | **S6 (260724)** | M1 | 控制台 P0 | React + TypeScript + Vite + shadcn/ui；配置五对象索引与完整 YAML 编辑、运行状态视图、简版发布流、证书库、专家模式、编译产物、系统信息 | [控制台 API](../system_design/260717-3-console-api-design.md) §2、§6、[M1 工程实施计划](engineering_plan/260722-1-m1-completion-plan.md) | S5；已完成（2026-07-22，T1~T5、A1~A7 全部通过，[任务追踪](sprints/260724/plan_todos_trace.md)） |
 | **S7 (260725)** | M1 | static 模式与进程托管 | M-PROC（发现/启动/接管/崩溃退避）；hot restart 协调协议（DL1/DL4/DL6 实测定）；static Apply 路径与生效语义 | [下发层](../system_design/260717-1-deliver-layer-design.md) §4~§5、[M1 工程实施计划](engineering_plan/260722-1-m1-completion-plan.md) | S2/S6；✅ 已完成（2026-07-22，T1~T5、A1~A8 全通过，[任务追踪](sprints/260725/plan_todos_trace.md)） |
-| **S8 (260726)** | M1 | 交付物与 M1 收口 | systemd unit + 安装脚本；Docker 镜像（esgw / all-in-one）；AD8 默认监听与引导参数终审；跨模块 e2e 矩阵（T1/T2 拓扑 × xds/static）；用户文档首版 | 架构 §7、需求 FR-5、[M1 工程实施计划](engineering_plan/260722-1-m1-completion-plan.md) | S6、S7；进行中（2026-07-22 启动，[任务追踪](sprints/260726/plan_todos_trace.md)） |
+| **S8 (260726)** | M1 | 交付物与 M1 收口 | systemd unit + 安装脚本；Docker 镜像（esgw / all-in-one）；AD8 默认监听与引导参数终审；跨模块 e2e 矩阵（T1/T2 拓扑 × xds/static）；用户文档首版 | 架构 §7、需求 FR-5、[M1 工程实施计划](engineering_plan/260722-1-m1-completion-plan.md) | S6、S7；✅ 已完成（2026-07-22，T1~T5、A1~A8 全通过，[任务追踪](sprints/260726/plan_todos_trace.md)） |
 | S9+ | M2 | 统计视图、版本历史/回滚 UI 完整版、k8s disco（M-DISCO + T3/Helm）、协议规范对外发布、P1 策略补全（L4/mTLS/熔断等） | 按 P1 需求与真实反馈排期，届时拆分冲刺 | [k8s disco](../system_design/260717-5-k8s-disco-design.md) 等 | M1 |
 
 依赖说明：S3 与 S2 可并行（都只依赖 S1 的 IR 契约）；S7 与 S4~S6 可并行。单人/单 agent 顺序推进则按表序执行。
@@ -44,5 +44,5 @@ architecture §8 计划的全部 7 份模块详细设计已完成并交叉互认
 | 里程碑 | 验收标准（源自需求 §9 与可行性 §6） |
 |---|---|
 | M0（S1 末 + S2 初） | ① S1/S2 场景 YAML 经编译器产出 static 配置，过 `envoy --mode validate` 且跑通真实流量；② escape hatch 两种形态合成正确；③ 同一 IR 经 ADS 正常拉起（S2 冲刺完成）✅ ③ 已闭环（2026-07-20，S2 e2e：真实 Envoy 以接入 bootstrap 连 ADS 拉起 S1 场景，四流量断言全过，版本一致性证据见 [sprints/260720](sprints/260720/plan_todos_trace.md) A4 行） |
-| M1（S8 末） | P0 需求全集：xDS + static 双模式下发、控制台配置管理与实时状态、本地账号鉴权、systemd/Docker 部署、FR-5.6 管理面故障不影响数据面 |
+| M1（S8 末） | ✅ 已完成：P0 需求全集——xDS + static 双模式下发、控制台配置管理与实时状态、本地账号鉴权、systemd/Docker 部署、FR-5.6 管理面故障不影响数据面；证据见 [M1 矩阵](sprints/260726/extra_docs/m1-requirements-matrix.md) |
 | M2 | P1 全集：统计视图、版本回滚 UI、k8s 环境感知、Helm chart、协议规范文档 |
