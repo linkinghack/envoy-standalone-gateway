@@ -266,7 +266,8 @@ func buildAccessLog(al *protocol.AccessLog) (*accesslogv3.AccessLog, error) {
 
 // downstreamTLSSocket 生成一条 filter chain 的 TLS transport socket：
 // 证书链/私钥走文件路径（static 形态；xDS 形态由 F5 转 SDS 引用 crt/<listener>/<n>）。
-// clientCA（mTLS）为 P1 字段，值透传不设计专项测试。
+// clientCA 启用 mTLS；F5 在 xDS 模式把 validation context 转为 SDS Secret，
+// static 模式保留文件 DataSource。
 func downstreamTLSSocket(l *protocol.Listener, c *protocol.Certificate) (*corev3.TransportSocket, error) {
 	tlsCfg := l.Spec.TLS
 	ctx := &tlsv3.CommonTlsContext{

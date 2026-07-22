@@ -86,7 +86,7 @@ func buildUpstream(u *protocol.Upstream) (*clusterv3.Cluster, []CompileError) {
 			"envoy.extensions.upstreams.http.v3.HttpProtocolOptions": cfg,
 		}
 	}
-	// 熔断字段（P1）：结构预留、值透传，不设计专项测试（T4 任务书）。
+	// 熔断字段（P1）：协议层已保证 1..MaxInt32，映射 DEFAULT priority 阈值。
 	if s.Connection.MaxConnections != nil || s.Connection.MaxPendingRequests != nil {
 		th := &clusterv3.CircuitBreakers_Thresholds{Priority: corev3.RoutingPriority_DEFAULT}
 		if s.Connection.MaxConnections != nil {

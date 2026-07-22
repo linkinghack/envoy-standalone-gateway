@@ -20,8 +20,8 @@ import (
 
 // 本文件实现编译流水线 F5 形态化（编译层 §3 F5）：按下发模式决定引用还是内联。
 // 这是编译层唯一感知模式的阶段，实现为独立纯函数，两模式可对拍：
-//   - ModeXDS：Listener 引 RDS（F3 已挂）/SDS（证书进 IR.Secrets，命名
-//     crt/<listener>/<n>）；STATIC Cluster 的内联 CLA 抽到 IR.Endpoints 并改引 EDS；
+//   - ModeXDS：Listener 引 RDS（F3 已挂）/SDS（证书为 crt/<listener>/<n>，
+//     客户端 CA 为 ca/<listener>）；STATIC Cluster 的内联 CLA 抽到 IR.Endpoints 并改引 EDS；
 //   - ModeStatic：route_config 内联进 HCM（IR.Routes 不再携带）、证书文件路径
 //     直落 transport socket（含 secret patch 回写）、端点内联（F3 形态即终态）。
 //
@@ -99,8 +99,8 @@ func materialize(syn *synthesis, mode Mode) (*ir.IR, []CompileError) {
 	return out, errs
 }
 
-// referenceSDS（ModeXDS）：编译产物 Listener 的证书改引 SDS crt/<listener>/<n>，
-// 证书本体由调用方装配进 IR.Secrets。
+// referenceSDS（ModeXDS）：服务端证书和客户端 CA 改引 SDS，Secret 本体由
+// 调用方装配进 IR.Secrets。
 func (s *synthesis) referenceSDS(lis *listenerv3.Listener) []CompileError {
 	var errs []CompileError
 	name := strings.TrimPrefix(lis.GetName(), "lis/")
@@ -125,6 +125,19 @@ func (s *synthesis) referenceSDS(lis *listenerv3.Listener) []CompileError {
 			Name:      secretName,
 			SdsConfig: adsConfigSource(),
 		}}
+		if ctx.GetValidationContext() != nil {
+			caName := clientCASecretResourceName(name)
+			secret := s.secretByName(caName)
+			if secret == nil || secret.GetValidationContext() == nil {
+				errs = append(errs, s.materializeErr(caName,
+					"TLS filter chain has no client CA validation-context Secret %q", caName))
+			} else {
+				used[caName] = true
+				ctx.ValidationContextType = &tlsv3.CommonTlsContext_ValidationContextSdsSecretConfig{
+					ValidationContextSdsSecretConfig: &tlsv3.SdsSecretConfig{Name: caName, SdsConfig: adsConfigSource()},
+				}
+			}
+		}
 		if err := remarshalTransportSocket(ts, down); err != nil {
 			errs = append(errs, s.materializeErr(secretName, "remarshal DownstreamTlsContext: %v", err))
 		}
@@ -159,7 +172,7 @@ func (s *synthesis) inlineListener(lis *listenerv3.Listener, inlined map[string]
 		}
 	}
 
-	// 证书回写：Secret（可能已被 patch）→ transport socket 内联证书。
+	// 证书/客户端 CA 回写：Secret（证书可能已被 patch）→ transport socket 内联。
 	used := map[string]bool{}
 	certIdx := 0
 	for _, chain := range lis.GetFilterChains() {
@@ -183,6 +196,20 @@ func (s *synthesis) inlineListener(lis *listenerv3.Listener, inlined map[string]
 			continue
 		}
 		down.GetCommonTlsContext().TlsCertificates = []*tlsv3.TlsCertificate{tc}
+		ctx := down.GetCommonTlsContext()
+		if ctx.GetValidationContext() != nil {
+			caName := clientCASecretResourceName(name)
+			caSecret := s.secretByName(caName)
+			if caSecret == nil || caSecret.GetValidationContext() == nil {
+				errs = append(errs, s.materializeErr(caName,
+					"TLS filter chain has no client CA validation-context Secret %q", caName))
+			} else {
+				used[caName] = true
+				ctx.ValidationContextType = &tlsv3.CommonTlsContext_ValidationContext{
+					ValidationContext: caSecret.GetValidationContext(),
+				}
+			}
+		}
 		if err := remarshalTransportSocket(ts, down); err != nil {
 			errs = append(errs, s.materializeErr(secretName, "remarshal DownstreamTlsContext: %v", err))
 		}
@@ -191,14 +218,15 @@ func (s *synthesis) inlineListener(lis *listenerv3.Listener, inlined map[string]
 	return errs
 }
 
-// checkOrphanSecrets 报告未被任何 filter chain 引用的编译产物证书
+// checkOrphanSecrets 报告未被任何 filter chain 引用的编译产物证书/客户端 CA
 // （如 listener 级 patch 删掉了对应 chain）。
 func (s *synthesis) checkOrphanSecrets(listener string, used map[string]bool) []CompileError {
 	var errs []CompileError
 	for name := range s.compiledSecrets {
-		if strings.HasPrefix(name, "crt/"+listener+"/") && !used[name] {
+		belongs := strings.HasPrefix(name, "crt/"+listener+"/") || name == clientCASecretResourceName(listener)
+		if belongs && !used[name] {
 			errs = append(errs, s.materializeErr(name,
-				"certificate Secret %q is not referenced by any TLS filter chain (was the chain removed by a patch?)", name))
+				"compiled TLS Secret %q is not referenced by any TLS filter chain (was the chain removed by a patch?)", name))
 		}
 	}
 	return errs

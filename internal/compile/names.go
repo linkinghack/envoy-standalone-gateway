@@ -3,7 +3,8 @@ package compile
 import "strconv"
 
 // 资源命名规约（编译层 §5，硬约束）：
-// lis/<listener>、rc/<listener>、vh/<route>、us/<upstream>、crt/<listener>/<n>。
+// lis/<listener>、rc/<listener>、vh/<route>、us/<upstream>、
+// crt/<listener>/<n>、ca/<listener>。
 // 「/」分隔避免与用户 name 字符集冲突；前缀短因其出现在 stats 名中
 // （M-STATE 反解归属靠它：http.lis/<n>.*、cluster 维度 us/<n>）。
 // crt/<listener>/<n>（证书 Secret，xDS 形态 SDS）由 T5 形态化落地时引入。
@@ -24,6 +25,9 @@ func clusterResourceName(upstream string) string { return "us/" + upstream }
 func secretResourceName(listener string, n int) string {
 	return "crt/" + listener + "/" + strconv.Itoa(n)
 }
+
+// clientCASecretResourceName 返回下游客户端 CA 的 validation-context Secret 名。
+func clientCASecretResourceName(listener string) string { return "ca/" + listener }
 
 // Envoy 标准 filter / transport socket / access logger 名。
 // HTTP filter 名同时是 typed_per_filter_config 的 key（编译层 §3 策略表）。

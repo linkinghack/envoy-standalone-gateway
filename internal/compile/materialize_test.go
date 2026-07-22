@@ -15,8 +15,10 @@ func buildTLSConfigSet(t *testing.T) *protocol.ConfigSet {
 	t.Helper()
 	dir := t.TempDir()
 	cert, key := writeSelfSignedCert(t, dir, "www", "www.example.com")
+	listener := newTLSListener("https", 443, protocol.ProtocolHTTPS, cert, key)
+	listener.Spec.TLS.ClientCA = cert
 	cs := &protocol.ConfigSet{
-		Listeners: []*protocol.Listener{newTLSListener("https", 443, protocol.ProtocolHTTPS, cert, key)},
+		Listeners: []*protocol.Listener{listener},
 		Routes:    []*protocol.Route{newHTTPRoute("www", []string{"https"}, []string{"www.example.com"}, "app")},
 		Upstreams: []*protocol.Upstream{newUpstream("app")},
 	}
@@ -55,6 +57,11 @@ func TestTwoModesAgree(t *testing.T) {
 	if xds.Secrets["crt/https/0"] == nil {
 		t.Fatal("xds: crt/https/0 missing")
 	}
+	caSecret := xds.Secrets["ca/https"]
+	if caSecret == nil || caSecret.GetValidationContext().GetTrustedCa().GetFilename() == "" {
+		t.Fatalf("xds: client CA validation-context secret = %v", caSecret)
+	}
+	caFilename := caSecret.GetValidationContext().GetTrustedCa().GetFilename()
 	if len(st.Secrets) != 0 {
 		t.Fatal("static: secrets should be inlined")
 	}
@@ -62,10 +69,22 @@ func TestTwoModesAgree(t *testing.T) {
 	if len(downX.GetCommonTlsContext().GetTlsCertificateSdsSecretConfigs()) != 1 {
 		t.Fatal("xds: want exactly one SDS certificate ref")
 	}
+	if got := downX.GetCommonTlsContext().GetValidationContextSdsSecretConfig().GetName(); got != "ca/https" {
+		t.Fatalf("xds: client CA SDS ref = %q, want ca/https", got)
+	}
+	if !downX.GetRequireClientCertificate().GetValue() {
+		t.Fatal("xds: require_client_certificate = false")
+	}
 	downS, _ := decodeDownstreamTLS(st.Listeners["lis/https"].GetFilterChains()[0])
 	if got := downS.GetCommonTlsContext().GetTlsCertificates(); len(got) != 1 ||
 		got[0].GetCertificateChain().GetFilename() == "" {
 		t.Fatal("static: cert file path should be inlined in transport socket")
+	}
+	if got := downS.GetCommonTlsContext().GetValidationContext().GetTrustedCa().GetFilename(); got != caFilename {
+		t.Fatalf("static: trusted CA = %q, want %q", got, caFilename)
+	}
+	if !downS.GetRequireClientCertificate().GetValue() {
+		t.Fatal("static: require_client_certificate = false")
 	}
 
 	// 端点：xds STATIC→EDS（CLA 抽入 IR.Endpoints）；static 内联。

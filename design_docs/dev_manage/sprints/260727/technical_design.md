@@ -32,7 +32,7 @@ HTTP 地址解析为 scheme/host/port，自动生成 STRICT_DNS/STATIC auth clus
 
 ## 3. TLS 与连接保护
 
-`Listener.tls.clientCA` 编译为 DownstreamTlsContext validation context 的 trusted CA，并设置 `require_client_certificate=true`。编译期解析 CA PEM，错误定位到 `spec.tls.clientCA`。Upstream `maxConnections/maxPendingRequests` 必须为正数，默认 priority 为 DEFAULT；补齐 proto/golden/真实过载证据，不再只做“字段透传”。
+`Listener.tls.clientCA` 编译为 DownstreamTlsContext validation context 的 trusted CA，并设置 `require_client_certificate=true`。编译期解析 CA PEM，错误定位到 `spec.tls.clientCA`。static 产物保留文件 DataSource；xDS 产物提取为 `ca/<listener>` validation-context Secret 并通过 ADS/SDS 引用，不能要求数据面共享管理面的本地路径。Upstream `maxConnections/maxPendingRequests` 必须位于 `1..2147483647`，默认 priority 为 DEFAULT；补齐 proto/golden/真实过载证据，不再只做“字段透传”。
 
 ## 4. 协议发行
 

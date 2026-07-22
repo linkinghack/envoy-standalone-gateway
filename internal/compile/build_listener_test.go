@@ -80,6 +80,23 @@ func TestHTTPListenerBuild(t *testing.T) {
 // TestHTTPSListenerSNI 表驱动覆盖证书 SAN → filter_chain_match（技术设计 §4 风险项）：
 // 单证书/多证书/通配 SAN/无 SAN 有 CN/SAN 重叠报错/证书读取失败。
 func TestHTTPSListenerSNI(t *testing.T) {
+	t.Run("client CA requires a verified certificate", func(t *testing.T) {
+		dir := t.TempDir()
+		cert, key := writeSelfSignedCert(t, dir, "api", "api.example.com")
+		lis := newTLSListener("https", 443, protocol.ProtocolHTTPS, cert, key)
+		lis.Spec.TLS.ClientCA = cert
+		res, errs := buildCS(t, &protocol.ConfigSet{Listeners: []*protocol.Listener{lis}})
+		assertNoErrs(t, errs)
+		down, _ := decodeDownstreamTLS(findListener(t, res, "lis/https").GetFilterChains()[0])
+		if !down.GetRequireClientCertificate().GetValue() {
+			t.Fatal("require_client_certificate = false, want true")
+		}
+		trusted := down.GetCommonTlsContext().GetValidationContext().GetTrustedCa().GetFilename()
+		if trusted != cert {
+			t.Fatalf("trusted CA = %q, want %q", trusted, cert)
+		}
+	})
+
 	t.Run("single cert SAN", func(t *testing.T) {
 		dir := t.TempDir()
 		cert, key := writeSelfSignedCert(t, dir, "api", "api.example.com", "api.internal")

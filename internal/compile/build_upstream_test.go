@@ -5,6 +5,7 @@ import (
 	"time"
 
 	clusterv3 "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
+	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	tlsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
 
 	"github.com/linkinghack/envoy-standalone-gateway/internal/protocol"
@@ -242,7 +243,8 @@ func TestUpstreamConnection(t *testing.T) {
 		c := buildCluster(t, u)
 		th := c.GetCircuitBreakers().GetThresholds()
 		if len(th) != 1 || th[0].GetMaxConnections().GetValue() != 1024 ||
-			th[0].GetMaxPendingRequests().GetValue() != 512 {
+			th[0].GetMaxPendingRequests().GetValue() != 512 ||
+			th[0].GetPriority() != corev3.RoutingPriority_DEFAULT {
 			t.Fatalf("circuit breakers = %v", c.GetCircuitBreakers())
 		}
 	})

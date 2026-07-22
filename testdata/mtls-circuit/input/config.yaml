@@ -1,0 +1,31 @@
+apiVersion: esgw/v1alpha1
+kind: Listener
+metadata: {name: mtls}
+spec:
+  address: 127.0.0.1
+  port: 18444
+  protocol: HTTPS
+  tls:
+    certificates:
+      - certFile: testdata/certs/www.crt
+        keyFile: testdata/certs/www.key
+    clientCA: testdata/certs/client-ca.crt
+---
+apiVersion: esgw/v1alpha1
+kind: Route
+metadata: {name: protected}
+spec:
+  listeners: [mtls]
+  hostnames: [www.example.com]
+  rules:
+    - match: {path: {prefix: /}}
+      backends: [{upstream: app}]
+---
+apiVersion: esgw/v1alpha1
+kind: Upstream
+metadata: {name: app}
+spec:
+  endpoints: [{address: 127.0.0.1, port: 18080}]
+  connection:
+    maxConnections: 1
+    maxPendingRequests: 1

@@ -42,10 +42,10 @@ type synthesis struct {
 	routes    []*routev3.RouteConfiguration
 	clusters  []*clusterv3.Cluster
 	endpoints []*endpointv3.ClusterLoadAssignment // 仅 EnvoyResources 直接提供的 CLA
-	secrets   []*tlsv3.Secret                     // 编译产物证书 + EnvoyResources 提供的 Secret
+	secrets   []*tlsv3.Secret                     // 编译产物证书/客户端 CA + EnvoyResources Secret
 
 	compiledListeners map[string]bool // F3 产出的 Listener 资源名（lis/<n>）
-	compiledSecrets   map[string]bool // F3 产出的证书 Secret 名（crt/<listener>/<n>）
+	compiledSecrets   map[string]bool // F3 产出的证书/客户端 CA Secret
 	sourceMap         map[ir.ResourceKey]ir.SourceRef
 }
 
@@ -87,9 +87,9 @@ func (s *synthesis) initSourceMap(cs *protocol.ConfigSet) {
 	s.sourceMap[ir.ResourceKey{Kind: ir.ResourceBootstrap, Name: "bootstrap"}] = gw
 }
 
-// extractCompiledSecrets 把编译产物 Listener 的证书从 filter chain 的
-// DownstreamTlsContext 提取为 Secret crt/<listener>/<n>（C1：Listener → secret 的
-// patch 目标；F5 按模式决定 SDS 引用还是回写内联，均按名重新定位）。
+// extractCompiledSecrets 把编译产物 Listener 的服务端证书和客户端 CA 从
+// DownstreamTlsContext 提取为 Secret。证书是 crt/<listener>/<n>（C1 的 secret
+// patch 目标），客户端 CA 是 ca/<listener>；F5 按模式决定 SDS 引用或回写内联。
 func (s *synthesis) extractCompiledSecrets(cs *protocol.ConfigSet) []CompileError {
 	var errs []CompileError
 	byName := map[string]*protocol.Listener{}
@@ -104,6 +104,7 @@ func (s *synthesis) extractCompiledSecrets(cs *protocol.ConfigSet) []CompileErro
 		}
 		s.compiledListeners[lis.GetName()] = true
 		certIdx := 0
+		clientCAExtracted := false
 		for _, chain := range lis.GetFilterChains() {
 			ts := chain.GetTransportSocket()
 			if ts == nil || ts.GetTypedConfig() == nil {
@@ -123,6 +124,20 @@ func (s *synthesis) extractCompiledSecrets(cs *protocol.ConfigSet) []CompileErro
 				s.sourceMap[ir.ResourceKey{Kind: ir.ResourceSecret, Name: secret.GetName()}] = ir.SourceRef{
 					File: pl.Origin.File, Kind: protocol.KindListener, Name: name,
 					Path: fmt.Sprintf("spec.tls.certificates[%d]", certIdx),
+				}
+			}
+			if !clientCAExtracted {
+				if vc := down.GetCommonTlsContext().GetValidationContext(); vc != nil && vc.GetTrustedCa() != nil {
+					secret := &tlsv3.Secret{
+						Name: clientCASecretResourceName(name),
+						Type: &tlsv3.Secret_ValidationContext{ValidationContext: vc},
+					}
+					s.secrets = append(s.secrets, secret)
+					s.compiledSecrets[secret.GetName()] = true
+					s.sourceMap[ir.ResourceKey{Kind: ir.ResourceSecret, Name: secret.GetName()}] = ir.SourceRef{
+						File: pl.Origin.File, Kind: protocol.KindListener, Name: name, Path: "spec.tls.clientCA",
+					}
+					clientCAExtracted = true
 				}
 			}
 			certIdx++
