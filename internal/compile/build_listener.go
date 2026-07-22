@@ -206,6 +206,10 @@ func (ctx *buildContext) buildHCM(l *protocol.Listener, jwtAsm *jwtAssembly, ext
 			IdleTimeout: durationpb.New(gw.HTTP.IdleTimeout.Duration),
 		},
 		MaxRequestHeadersKb: wrapperspb.UInt32(uint32(*gw.HTTP.MaxRequestHeadersKB)),
+		// Standalone gateway 是边缘代理：未显式配置可信代理链前，客户端可写的
+		// X-Forwarded-For 不得改变 RBAC remote_ip 或限流 remote_address。
+		// use_remote_address=true 且 trusted hops=0 以物理下游地址为可信源。
+		UseRemoteAddress: wrapperspb.Bool(true),
 		// vhost 域名匹配剥离 Host/:authority 端口后缀（nginx server_name 同语义）：
 		// 非标准端口部署时 Host 带 :port，不剥离会导致兜底 404（T7 e2e 实测复现）。
 		StripPortMode: &hcmv3.HttpConnectionManager_StripAnyHostPort{

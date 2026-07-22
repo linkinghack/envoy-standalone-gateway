@@ -215,10 +215,11 @@ func TestIPAccessPerRoute(t *testing.T) {
 	}
 }
 
-// TestRateLimitPerRule 覆盖 rateLimit per-rule 令牌桶。
+// TestRateLimitPerRule 覆盖 rateLimit per-rule 令牌桶、100% 执行和动态 key descriptor。
 func TestRateLimitPerRule(t *testing.T) {
+	maxKeys := int32(321)
 	spec := protocol.PolicySpec{RateLimit: &protocol.RateLimitPolicy{
-		Requests: 10, Unit: protocol.RateLimitUnitMinute, Key: "clientIP",
+		Requests: 10, Unit: protocol.RateLimitUnitMinute, Key: "header:X-Tenant", MaxKeys: &maxKeys,
 	}}
 	cs := policyCS(nil, nil, nil, []protocol.PolicyAttachment{{Inline: &spec}})
 	route, _ := buildPolicyRoute(t, cs)
@@ -232,6 +233,40 @@ func TestRateLimitPerRule(t *testing.T) {
 	tb := lrl.GetTokenBucket()
 	if tb.GetMaxTokens() != 10 || tb.GetTokensPerFill().GetValue() != 10 || tb.GetFillInterval().GetSeconds() != 60 {
 		t.Fatalf("token bucket = %v, want 10/minute（burst 默认 = requests）", tb)
+	}
+	if lrl.GetFilterEnabled().GetDefaultValue().GetNumerator() != 100 ||
+		lrl.GetFilterEnforced().GetDefaultValue().GetNumerator() != 100 {
+		t.Fatalf("rate limit must be enabled and enforced at 100%%: %v", lrl)
+	}
+	if lrl.GetAlwaysConsumeDefaultTokenBucket().GetValue() {
+		t.Fatal("default token bucket must not be consumed after a descriptor match")
+	}
+	if lrl.GetMaxDynamicDescriptors().GetValue() != 321 {
+		t.Fatalf("max dynamic descriptors = %d, want 321", lrl.GetMaxDynamicDescriptors().GetValue())
+	}
+	action := lrl.GetRateLimits()[0].GetActions()[0].GetRequestHeaders()
+	if action.GetHeaderName() != "x-tenant" || action.GetDescriptorKey() != "header:x-tenant" {
+		t.Fatalf("request header action = %v", action)
+	}
+	descriptor := lrl.GetDescriptors()[0]
+	if descriptor.GetEntries()[0].GetKey() != "header:x-tenant" || descriptor.GetEntries()[0].GetValue() != "" {
+		t.Fatalf("wildcard descriptor = %v", descriptor)
+	}
+	if descriptor.GetTokenBucket().GetMaxTokens() != 10 {
+		t.Fatalf("descriptor token bucket = %v", descriptor.GetTokenBucket())
+	}
+}
+
+func TestRateLimitClientIPAction(t *testing.T) {
+	lrl := buildLocalRateLimit(&protocol.RateLimitPolicy{
+		Requests: 2, Unit: protocol.RateLimitUnitSecond, Key: protocol.RateLimitKeyClientIP,
+	})
+	if lrl.GetRateLimits()[0].GetActions()[0].GetRemoteAddress() == nil {
+		t.Fatalf("clientIP action = %v, want remote_address", lrl.GetRateLimits())
+	}
+	entry := lrl.GetDescriptors()[0].GetEntries()[0]
+	if entry.GetKey() != "remote_address" || entry.GetValue() != "" {
+		t.Fatalf("clientIP wildcard descriptor = %v", entry)
 	}
 }
 

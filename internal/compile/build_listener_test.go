@@ -61,6 +61,10 @@ func TestHTTPListenerBuild(t *testing.T) {
 	if hcm.GetServerName() != "esgw" {
 		t.Fatalf("serverName = %q, want esgw", hcm.GetServerName())
 	}
+	if !hcm.GetUseRemoteAddress().GetValue() || hcm.GetXffNumTrustedHops() != 0 {
+		t.Fatalf("source address boundary = use_remote_address:%v trusted_hops:%d, want true/0",
+			hcm.GetUseRemoteAddress(), hcm.GetXffNumTrustedHops())
+	}
 	// HTTP 明文默认 http2=false。
 	if hcm.GetHttp2ProtocolOptions() != nil {
 		t.Fatal("HTTP listener default must not set http2 options")

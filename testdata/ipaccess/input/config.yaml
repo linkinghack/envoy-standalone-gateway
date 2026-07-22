@@ -4,12 +4,34 @@ metadata: {name: web}
 spec: {address: 127.0.0.1, port: 18083, protocol: HTTP}
 ---
 apiVersion: esgw/v1alpha1
+kind: Listener
+metadata: {name: per-ip}
+spec: {address: 127.0.0.1, port: 18084, protocol: HTTP}
+---
+apiVersion: esgw/v1alpha1
+kind: Listener
+metadata: {name: per-tenant}
+spec: {address: 127.0.0.1, port: 18085, protocol: HTTP}
+---
+apiVersion: esgw/v1alpha1
 kind: Policy
 metadata: {name: private-net}
 spec:
   ipAccess:
-    allow: [10.1.2.3/8, 10.0.0.0/8]
-    deny: [10.9.0.0/16]
+    allow: [10.243.37.8/24, 10.243.37.0/24]
+    deny: [10.243.37.9/32]
+---
+apiVersion: esgw/v1alpha1
+kind: Policy
+metadata: {name: client-quota}
+spec:
+  rateLimit: {requests: 2, unit: hour, burst: 2, key: clientIP, maxKeys: 100}
+---
+apiVersion: esgw/v1alpha1
+kind: Policy
+metadata: {name: tenant-quota}
+spec:
+  rateLimit: {requests: 2, unit: hour, burst: 2, key: "header:x-tenant", maxKeys: 100}
 ---
 apiVersion: esgw/v1alpha1
 kind: Route
@@ -17,6 +39,26 @@ metadata: {name: app}
 spec:
   listeners: [web]
   policies: [private-net]
+  rules:
+    - match: {path: {prefix: /}}
+      backends: [{upstream: app}]
+---
+apiVersion: esgw/v1alpha1
+kind: Route
+metadata: {name: per-ip}
+spec:
+  listeners: [per-ip]
+  policies: [client-quota]
+  rules:
+    - match: {path: {prefix: /}}
+      backends: [{upstream: app}]
+---
+apiVersion: esgw/v1alpha1
+kind: Route
+metadata: {name: per-tenant}
+spec:
+  listeners: [per-tenant]
+  policies: [tenant-quota]
   rules:
     - match: {path: {prefix: /}}
       backends: [{upstream: app}]

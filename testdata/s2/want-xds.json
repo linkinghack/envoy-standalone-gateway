@@ -265,7 +265,8 @@
                 },
                 "server_name": "esgw",
                 "stat_prefix": "lis/https",
-                "strip_any_host_port": true
+                "strip_any_host_port": true,
+                "use_remote_address": true
               }
             }
           ],
@@ -353,6 +354,41 @@
                 },
                 "envoy.filters.http.local_ratelimit": {
                   "@type": "type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit",
+                  "always_consume_default_token_bucket": false,
+                  "descriptors": [
+                    {
+                      "entries": [
+                        {
+                          "key": "remote_address"
+                        }
+                      ],
+                      "token_bucket": {
+                        "fill_interval": "60s",
+                        "max_tokens": 10,
+                        "tokens_per_fill": 10
+                      }
+                    }
+                  ],
+                  "filter_enabled": {
+                    "default_value": {
+                      "numerator": 100
+                    }
+                  },
+                  "filter_enforced": {
+                    "default_value": {
+                      "numerator": 100
+                    }
+                  },
+                  "max_dynamic_descriptors": 10000,
+                  "rate_limits": [
+                    {
+                      "actions": [
+                        {
+                          "remote_address": {}
+                        }
+                      ]
+                    }
+                  ],
                   "stat_prefix": "local_ratelimit",
                   "token_bucket": {
                     "fill_interval": "60s",
@@ -454,5 +490,5 @@
       }
     }
   },
-  "version": "01eb689eee18"
+  "version": "f111a0d4333e"
 }

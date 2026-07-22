@@ -171,7 +171,8 @@
                 },
                 "server_name": "esgw",
                 "stat_prefix": "lis/grpc-auth",
-                "strip_any_host_port": true
+                "strip_any_host_port": true,
+                "use_remote_address": true
               }
             }
           ]
@@ -254,7 +255,8 @@
                 },
                 "server_name": "esgw",
                 "stat_prefix": "lis/http-auth",
-                "strip_any_host_port": true
+                "strip_any_host_port": true,
+                "use_remote_address": true
               }
             }
           ]
@@ -337,5 +339,5 @@
     }
   },
   "secrets": {},
-  "version": "46aeb7af75a6"
+  "version": "6597c74e221a"
 }

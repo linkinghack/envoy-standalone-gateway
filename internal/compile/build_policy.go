@@ -16,6 +16,7 @@ import (
 	endpointv3 "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
 	rbacconfigv3 "github.com/envoyproxy/go-control-plane/envoy/config/rbac/v3"
 	routev3 "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
+	ratelimitv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/common/ratelimit/v3"
 	corsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/cors/v3"
 	extauthzv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_authz/v3"
 	jwtv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/jwt_authn/v3"
@@ -343,12 +344,10 @@ func originMatcher(o string) *matcherv3.StringMatcher {
 	}
 }
 
-// buildLocalRateLimit 生成 per-rule 本地令牌桶限流配置。
-// burst = 桶容量（默认 = requests，F2 已填默认值）；tokens_per_fill = requests；fill 周期 = unit。
-//
-// 已知偏离（记录于 T4 进展）：rateLimit.key（clientIP | header:<name>）M0 不生效——
-// Envoy 本地限流的 descriptor entry 是静态键值，无法表达「按客户端 IP / 请求头值」动态分桶
-// （动态键属全局限流 rate limit service 的能力），per-rule 退化为全局限流桶。
+// buildLocalRateLimit 生成 per-rule 本地令牌桶限流配置。空 descriptor value 是
+// Envoy HTTP local_ratelimit 的 wildcard：每个运行时 value 建立独立 token bucket，
+// 并由 max_dynamic_descriptors 限制 LRU 缓存容量。默认桶只处理 header 缺失等
+// 无 descriptor 的请求；匹配 wildcard 时不重复消费默认桶。
 func buildLocalRateLimit(p *protocol.RateLimitPolicy) *localratelimitv3.LocalRateLimit {
 	var unit time.Duration
 	switch p.Unit {
@@ -359,17 +358,51 @@ func buildLocalRateLimit(p *protocol.RateLimitPolicy) *localratelimitv3.LocalRat
 	case protocol.RateLimitUnitHour:
 		unit = time.Hour
 	}
+	tokenBucket := rateLimitTokenBucket(p, unit)
+	descriptorKey := "remote_address"
+	action := &routev3.RateLimit_Action{ActionSpecifier: &routev3.RateLimit_Action_RemoteAddress_{
+		RemoteAddress: &routev3.RateLimit_Action_RemoteAddress{},
+	}}
+	if header, ok := strings.CutPrefix(p.Key, protocol.RateLimitKeyHeaderPrefix); ok {
+		header = strings.ToLower(header)
+		descriptorKey = protocol.RateLimitKeyHeaderPrefix + header
+		action = &routev3.RateLimit_Action{ActionSpecifier: &routev3.RateLimit_Action_RequestHeaders_{
+			RequestHeaders: &routev3.RateLimit_Action_RequestHeaders{
+				HeaderName: header, DescriptorKey: descriptorKey,
+			},
+		}}
+	}
+	maxKeys := protocol.RateLimitDefaultMaxKeys
+	if p.MaxKeys != nil {
+		maxKeys = *p.MaxKeys
+	}
+	percent100 := func() *corev3.RuntimeFractionalPercent {
+		return &corev3.RuntimeFractionalPercent{DefaultValue: &typev3.FractionalPercent{
+			Numerator: 100, Denominator: typev3.FractionalPercent_HUNDRED,
+		}}
+	}
+	return &localratelimitv3.LocalRateLimit{
+		StatPrefix:                      "local_ratelimit",
+		TokenBucket:                     tokenBucket,
+		FilterEnabled:                   percent100(),
+		FilterEnforced:                  percent100(),
+		AlwaysConsumeDefaultTokenBucket: wrapperspb.Bool(false),
+		RateLimits:                      []*routev3.RateLimit{{Actions: []*routev3.RateLimit_Action{action}}},
+		Descriptors: []*ratelimitv3.LocalRateLimitDescriptor{{
+			Entries:     []*ratelimitv3.RateLimitDescriptor_Entry{{Key: descriptorKey}},
+			TokenBucket: rateLimitTokenBucket(p, unit),
+		}},
+		MaxDynamicDescriptors: wrapperspb.UInt32(uint32(maxKeys)),
+	}
+}
+
+func rateLimitTokenBucket(p *protocol.RateLimitPolicy, unit time.Duration) *typev3.TokenBucket {
 	burst := p.Requests
 	if p.Burst != nil {
 		burst = *p.Burst
 	}
-	return &localratelimitv3.LocalRateLimit{
-		StatPrefix: "local_ratelimit",
-		TokenBucket: &typev3.TokenBucket{
-			MaxTokens:     uint32(burst),
-			TokensPerFill: wrapperspb.UInt32(uint32(p.Requests)),
-			FillInterval:  durationpb.New(unit),
-		},
+	return &typev3.TokenBucket{
+		MaxTokens: uint32(burst), TokensPerFill: wrapperspb.UInt32(uint32(p.Requests)), FillInterval: durationpb.New(unit),
 	}
 }
 

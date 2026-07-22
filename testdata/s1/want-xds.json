@@ -121,7 +121,8 @@
                 },
                 "server_name": "esgw",
                 "stat_prefix": "lis/http",
-                "strip_any_host_port": true
+                "strip_any_host_port": true,
+                "use_remote_address": true
               }
             }
           ]
@@ -194,7 +195,8 @@
                 },
                 "server_name": "esgw",
                 "stat_prefix": "lis/https",
-                "strip_any_host_port": true
+                "strip_any_host_port": true,
+                "use_remote_address": true
               }
             }
           ],
@@ -279,7 +281,8 @@
                 },
                 "server_name": "esgw",
                 "stat_prefix": "lis/https",
-                "strip_any_host_port": true
+                "strip_any_host_port": true,
+                "use_remote_address": true
               }
             }
           ],
@@ -405,5 +408,5 @@
       }
     }
   },
-  "version": "1d684c0086f2"
+  "version": "1b33a7f7cdd9"
 }

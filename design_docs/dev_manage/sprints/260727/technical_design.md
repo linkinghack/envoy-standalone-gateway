@@ -24,11 +24,11 @@ HTTP 地址解析为 scheme/host/port，自动生成 STRICT_DNS/STATIC auth clus
 
 ### 2.2 IPAccess
 
-使用 `envoy.filters.http.rbac` 的 per-route `RBACPerRoute`。CIDR 先规范化、排序、去重。语义冻结为：命中 deny 永远拒绝；allow 非空时仅 allow 集合可进入；allow 为空表示默认允许。规则组合为 `allow AND NOT deny`，来源采用 Envoy downstream remote address；受代理链影响的 XFF 信任配置不在本 Sprint，文档必须提示边界。
+使用 `envoy.filters.http.rbac` 的 per-route `RBACPerRoute`。CIDR 先规范化、排序、去重。语义冻结为：命中 deny 永远拒绝；allow 非空时仅 allow 集合可进入；allow 为空表示默认允许。规则组合为 `allow AND NOT deny`，来源采用 Envoy downstream remote address。Standalone 边缘模式固定 `use_remote_address=true`、`xff_num_trusted_hops=0`，客户端自带 XFF 不参与可信源地址计算；可信上游代理链配置不在本 Sprint，部署在代理之后时必须保留该限制说明，不能把任意 XFF 当作客户端身份。
 
 ### 2.3 本地限流 key
 
-禁止继续共享单桶降级。Builder 使用 route rate-limit actions 生成动态 descriptor：`remote_address` 对应 clientIP，`request_headers` 对应 header；local rate limit descriptor 必须与动作生成的 key/value 匹配。实现前用三个支持版本的真实 Envoy spike 锁定“空 descriptor value 是否通配”的行为；若版本不一致，改用各版本均支持的 filter-state/input matcher 方案，不能缩减验收标准。
+禁止继续共享单桶降级。Builder 使用 per-route local-rate-limit `rate_limits` action 生成动态 descriptor：`remote_address` 对应 clientIP，`request_headers` 对应 header；descriptor 使用同 key 和空 value。Envoy API 明确定义空 value 为 wildcard，会按每个运行时 value 创建独立 token bucket；`maxKeys` 映射 `max_dynamic_descriptors`，默认 10000、协议范围 1..100000，以 LRU 限制高基数内存。filter 必须显式 100% enabled/enforced，并设置 `always_consume_default_token_bucket=false`，避免 descriptor 命中后再消费共享桶；header 缺失时没有 descriptor，使用默认桶而不是绕过限流。三版本真实流量必须分别锁定上述行为。
 
 ## 3. TLS 与连接保护
 

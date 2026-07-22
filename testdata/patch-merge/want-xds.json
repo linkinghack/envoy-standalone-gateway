@@ -97,7 +97,8 @@
                 },
                 "server_name": "esgw",
                 "stat_prefix": "lis/http",
-                "strip_any_host_port": true
+                "strip_any_host_port": true,
+                "use_remote_address": true
               }
             }
           ]
@@ -131,5 +132,5 @@
     }
   },
   "secrets": {},
-  "version": "237b712f7153"
+  "version": "7f1eeb226144"
 }
