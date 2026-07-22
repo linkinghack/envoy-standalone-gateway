@@ -14,4 +14,5 @@
 
 ## 进展
 
-- 2026-07-22：任务开始。
+- 2026-07-22：42 个 operation 的 OpenAPI 3.0.3 真源、统一错误模型、operation registry 与 CSRF contract test 完成。
+- 2026-07-22：固定 oapi-codegen v2.6.0 生成 `internal/api/gen/openapi.gen.go`（models + std-http server interface），runtime 固定 v1.3.0；生成代码可编译，重复生成 SHA-256 一致，任务完成。
