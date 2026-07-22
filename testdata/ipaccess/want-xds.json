@@ -1,29 +1,5 @@
 {
   "clusters": {
-    "legacy-cluster": {
-      "connect_timeout": "3s",
-      "load_assignment": {
-        "cluster_name": "legacy-cluster",
-        "endpoints": [
-          {
-            "lb_endpoints": [
-              {
-                "endpoint": {
-                  "address": {
-                    "socket_address": {
-                      "address": "legacy.internal",
-                      "port_value": 9000
-                    }
-                  }
-                }
-              }
-            ]
-          }
-        ]
-      },
-      "name": "legacy-cluster",
-      "type": "STRICT_DNS"
-    },
     "us/app": {
       "connect_timeout": "5s",
       "eds_cluster_config": {
@@ -46,7 +22,7 @@
                 "address": {
                   "socket_address": {
                     "address": "127.0.0.1",
-                    "port_value": 9000
+                    "port_value": 18080
                   }
                 }
               }
@@ -57,11 +33,11 @@
     }
   },
   "listeners": {
-    "lis/http": {
+    "lis/web": {
       "address": {
         "socket_address": {
-          "address": "0.0.0.0",
-          "port_value": 80
+          "address": "127.0.0.1",
+          "port_value": 18083
         }
       },
       "filter_chains": [
@@ -112,28 +88,28 @@
                   "config_source": {
                     "ads": {}
                   },
-                  "route_config_name": "rc/http"
+                  "route_config_name": "rc/web"
                 },
                 "server_name": "esgw",
-                "stat_prefix": "lis/http",
+                "stat_prefix": "lis/web",
                 "strip_any_host_port": true
               }
             }
           ]
         }
       ],
-      "name": "lis/http"
+      "name": "lis/web"
     }
   },
   "routes": {
-    "rc/http": {
-      "name": "rc/http",
+    "rc/web": {
+      "name": "rc/web",
       "virtual_hosts": [
         {
           "domains": [
             "*"
           ],
-          "name": "vh/api",
+          "name": "vh/app",
           "routes": [
             {
               "match": {
@@ -142,6 +118,46 @@
               "route": {
                 "cluster": "us/app",
                 "timeout": "15s"
+              },
+              "typed_per_filter_config": {
+                "envoy.filters.http.rbac": {
+                  "@type": "type.googleapis.com/envoy.extensions.filters.http.rbac.v3.RBACPerRoute",
+                  "rbac": {
+                    "rules": {
+                      "policies": {
+                        "ip-access": {
+                          "permissions": [
+                            {
+                              "any": true
+                            }
+                          ],
+                          "principals": [
+                            {
+                              "and_ids": {
+                                "ids": [
+                                  {
+                                    "remote_ip": {
+                                      "address_prefix": "10.0.0.0",
+                                      "prefix_len": 8
+                                    }
+                                  },
+                                  {
+                                    "not_id": {
+                                      "remote_ip": {
+                                        "address_prefix": "10.9.0.0",
+                                        "prefix_len": 16
+                                      }
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
               }
             }
           ]
@@ -150,5 +166,5 @@
     }
   },
   "secrets": {},
-  "version": "b54186cf4171"
+  "version": "a5ebacd87e59"
 }

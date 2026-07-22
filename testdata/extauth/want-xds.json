@@ -118,6 +118,12 @@
                 },
                 "http_filters": [
                   {
+                    "name": "envoy.filters.http.rbac",
+                    "typed_config": {
+                      "@type": "type.googleapis.com/envoy.extensions.filters.http.rbac.v3.RBAC"
+                    }
+                  },
+                  {
                     "name": "envoy.filters.http.cors",
                     "typed_config": {
                       "@type": "type.googleapis.com/envoy.extensions.filters.http.cors.v3.Cors"
@@ -191,6 +197,12 @@
                   "idle_timeout": "60s"
                 },
                 "http_filters": [
+                  {
+                    "name": "envoy.filters.http.rbac",
+                    "typed_config": {
+                      "@type": "type.googleapis.com/envoy.extensions.filters.http.rbac.v3.RBAC"
+                    }
+                  },
                   {
                     "name": "envoy.filters.http.cors",
                     "typed_config": {
@@ -325,5 +337,5 @@
     }
   },
   "secrets": {},
-  "version": "1f75ab713aff"
+  "version": "46aeb7af75a6"
 }

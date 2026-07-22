@@ -52,6 +52,12 @@
                 },
                 "http_filters": [
                   {
+                    "name": "envoy.filters.http.rbac",
+                    "typed_config": {
+                      "@type": "type.googleapis.com/envoy.extensions.filters.http.rbac.v3.RBAC"
+                    }
+                  },
+                  {
                     "name": "envoy.filters.http.cors",
                     "typed_config": {
                       "@type": "type.googleapis.com/envoy.extensions.filters.http.cors.v3.Cors"
@@ -120,5 +126,5 @@
     }
   },
   "secrets": {},
-  "version": "dc341a29b1d7"
+  "version": "932ab03432b4"
 }

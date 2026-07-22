@@ -1,0 +1,28 @@
+apiVersion: esgw/v1alpha1
+kind: Listener
+metadata: {name: web}
+spec: {address: 127.0.0.1, port: 18083, protocol: HTTP}
+---
+apiVersion: esgw/v1alpha1
+kind: Policy
+metadata: {name: private-net}
+spec:
+  ipAccess:
+    allow: [10.1.2.3/8, 10.0.0.0/8]
+    deny: [10.9.0.0/16]
+---
+apiVersion: esgw/v1alpha1
+kind: Route
+metadata: {name: app}
+spec:
+  listeners: [web]
+  policies: [private-net]
+  rules:
+    - match: {path: {prefix: /}}
+      backends: [{upstream: app}]
+---
+apiVersion: esgw/v1alpha1
+kind: Upstream
+metadata: {name: app}
+spec:
+  endpoints: [{address: 127.0.0.1, port: 18080}]

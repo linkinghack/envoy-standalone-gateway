@@ -81,6 +81,12 @@
                 },
                 "http_filters": [
                   {
+                    "name": "envoy.filters.http.rbac",
+                    "typed_config": {
+                      "@type": "type.googleapis.com/envoy.extensions.filters.http.rbac.v3.RBAC"
+                    }
+                  },
+                  {
                     "name": "envoy.filters.http.cors",
                     "typed_config": {
                       "@type": "type.googleapis.com/envoy.extensions.filters.http.cors.v3.Cors"
@@ -147,6 +153,12 @@
                 },
                 "http2_protocol_options": {},
                 "http_filters": [
+                  {
+                    "name": "envoy.filters.http.rbac",
+                    "typed_config": {
+                      "@type": "type.googleapis.com/envoy.extensions.filters.http.rbac.v3.RBAC"
+                    }
+                  },
                   {
                     "name": "envoy.filters.http.cors",
                     "typed_config": {
@@ -226,6 +238,12 @@
                 },
                 "http2_protocol_options": {},
                 "http_filters": [
+                  {
+                    "name": "envoy.filters.http.rbac",
+                    "typed_config": {
+                      "@type": "type.googleapis.com/envoy.extensions.filters.http.rbac.v3.RBAC"
+                    }
+                  },
                   {
                     "name": "envoy.filters.http.cors",
                     "typed_config": {
@@ -387,5 +405,5 @@
       }
     }
   },
-  "version": "4ba6bf6b0638"
+  "version": "1d684c0086f2"
 }
