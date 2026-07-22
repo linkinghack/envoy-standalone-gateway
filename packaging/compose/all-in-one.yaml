@@ -1,0 +1,17 @@
+services:
+  gateway:
+    build:
+      context: ../..
+      dockerfile: packaging/docker/Dockerfile.all-in-one
+    image: esgw-all-in-one:local
+    environment:
+      ESGW_INITIAL_ADMIN_PASSWORD: ${ESGW_INITIAL_ADMIN_PASSWORD:-}
+    ports:
+      - "127.0.0.1:8080:8080"
+      - "10080:10080"
+    volumes:
+      - esgw-data:/var/lib/esgw
+    restart: unless-stopped
+
+volumes:
+  esgw-data:

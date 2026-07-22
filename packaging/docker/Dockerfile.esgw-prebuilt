@@ -1,0 +1,11 @@
+FROM scratch
+COPY --chown=65532:65532 rootfs/ /
+COPY --chown=65532:65532 --chmod=0755 esgw /usr/local/bin/esgw
+COPY --chown=65532:65532 --chmod=0440 esgw.yaml /etc/esgw/esgw.yaml
+USER 65532:65532
+VOLUME ["/var/lib/esgw"]
+EXPOSE 8080 18000
+HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=3 \
+  CMD ["/usr/local/bin/esgw", "healthcheck", "--url", "http://127.0.0.1:8080/readyz"]
+ENTRYPOINT ["/usr/local/bin/esgw"]
+CMD ["serve", "-c", "/etc/esgw/esgw.yaml"]

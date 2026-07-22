@@ -1,0 +1,13 @@
+dataDir: /var/lib/esgw
+deliver:
+  mode: xds
+  xds:
+    listen: 127.0.0.1:18000
+    adminAddress: unix:///run/esgw/envoy-admin.sock
+  static:
+    outputPath: /var/lib/esgw/envoy/envoy.yaml
+proc:
+  enabled: true
+api:
+  listen: 0.0.0.0:8080
+  topology: standalone

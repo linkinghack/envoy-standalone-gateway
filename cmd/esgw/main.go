@@ -33,6 +33,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runServe(args[1:], stderr)
 	case "bootstrap":
 		return runBootstrap(args[1:], stdout, stderr)
+	case "healthcheck":
+		return runHealthcheck(args[1:], stderr)
 	default:
 		eprintf(stderr, "unknown command %q\n", args[0])
 		usage(stderr)
@@ -47,6 +49,7 @@ Commands:
   compile   compile a config directory into an Envoy config artifact
   serve     run xDS and management API: -c <esgw.yaml> [-f <data-dir/config.d>]
   bootstrap export an Envoy bootstrap for xDS mode: -c <esgw.yaml> [-o <file>]
+  healthcheck probe an HTTP readiness endpoint: [--url <url>] [--timeout <duration>]
   version   print version
 `, version.BinaryName)
 }

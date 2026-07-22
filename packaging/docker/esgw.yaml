@@ -1,0 +1,13 @@
+dataDir: /var/lib/esgw
+deliver:
+  mode: xds
+  xds:
+    listen: 127.0.0.1:18000
+    adminAddress: 127.0.0.1:9901
+  static:
+    outputPath: /var/lib/esgw/envoy/envoy.yaml
+proc:
+  enabled: false
+api:
+  listen: 0.0.0.0:8080
+  topology: sidecar

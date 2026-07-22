@@ -69,6 +69,10 @@ validate-matrix: ## 多版本 envoy --mode validate（版本同源 internal/vers
 packaging-test: ## systemd 与安装/升级/卸载脚本测试
 	packaging/tests/install_test.sh
 
+.PHONY: image-smoke
+image-smoke: ## 两类 OCI 镜像的非 root/健康检查 smoke
+	packaging/tests/image_smoke.sh
+
 .PHONY: tidy
 tidy:
 	go mod tidy

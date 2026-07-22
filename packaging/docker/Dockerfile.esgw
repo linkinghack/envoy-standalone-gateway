@@ -1,0 +1,24 @@
+FROM golang:1.26-alpine AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+ARG VERSION=dev
+RUN install -d /out/rootfs/usr/local/bin \
+    && CGO_ENABLED=0 go build -trimpath \
+    -ldflags "-s -w -X github.com/linkinghack/envoy-standalone-gateway/internal/version.Version=${VERSION}" \
+    -o /out/rootfs/usr/local/bin/esgw ./cmd/esgw \
+    && install -d -m 0700 /out/rootfs/var/lib/esgw /out/rootfs/var/lib/esgw/config.d \
+       /out/rootfs/var/lib/esgw/envoy /out/rootfs/var/lib/esgw/run \
+    && install -d -m 0750 /out/rootfs/run/esgw /out/rootfs/etc/esgw
+
+FROM scratch
+COPY --from=build --chown=65532:65532 /out/rootfs/ /
+COPY --chown=65532:65532 --chmod=0440 packaging/docker/esgw.yaml /etc/esgw/esgw.yaml
+USER 65532:65532
+VOLUME ["/var/lib/esgw"]
+EXPOSE 8080 18000
+HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=3 \
+  CMD ["/usr/local/bin/esgw", "healthcheck", "--url", "http://127.0.0.1:8080/readyz"]
+ENTRYPOINT ["/usr/local/bin/esgw"]
+CMD ["serve", "-c", "/etc/esgw/esgw.yaml"]

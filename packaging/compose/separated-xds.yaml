@@ -1,0 +1,37 @@
+services:
+  bootstrap:
+    build:
+      context: ../..
+      dockerfile: packaging/docker/Dockerfile.esgw
+    image: esgw:local
+    command: ["bootstrap", "-c", "/etc/esgw/esgw.yaml", "-o", "/var/lib/esgw/bootstrap.yaml"]
+    volumes:
+      - esgw-data:/var/lib/esgw
+    restart: "no"
+
+  esgw:
+    image: esgw:local
+    environment:
+      ESGW_INITIAL_ADMIN_PASSWORD: ${ESGW_INITIAL_ADMIN_PASSWORD:-}
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - esgw-data:/var/lib/esgw
+    restart: unless-stopped
+
+  envoy:
+    image: envoyproxy/envoy:v1.39.0
+    command: ["-c", "/var/lib/esgw/bootstrap.yaml"]
+    depends_on:
+      esgw:
+        condition: service_healthy
+    network_mode: service:esgw
+    volumes:
+      - esgw-data:/var/lib/esgw:ro
+    restart: unless-stopped
+
+volumes:
+  esgw-data:

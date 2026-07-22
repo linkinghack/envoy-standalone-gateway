@@ -1,0 +1,9 @@
+.git
+.github
+bin
+design_docs
+e2e
+packaging/tests
+web/node_modules
+web/playwright-report
+web/test-results
