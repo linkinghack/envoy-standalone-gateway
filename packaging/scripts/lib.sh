@@ -55,3 +55,11 @@ reload_and_start() {
 	systemd-tmpfiles --create esgw.conf
 	systemctl enable --now esgw.service
 }
+
+reload_and_restart() {
+	[ -n "$destdir" ] && return 0
+	systemctl daemon-reload
+	systemd-tmpfiles --create esgw.conf
+	systemctl enable esgw.service
+	systemctl restart esgw.service
+}

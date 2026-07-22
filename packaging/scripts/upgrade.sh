@@ -17,5 +17,5 @@ if [ -e "$installed" ]; then
 fi
 atomic_install "$binary" "$installed" 0755
 install_support_files
-reload_and_start
+reload_and_restart
 echo "esgw upgraded; previous binaries use /usr/local/bin/esgw.previous.<UTC timestamp>"

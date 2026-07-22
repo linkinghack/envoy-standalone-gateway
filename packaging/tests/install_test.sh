@@ -10,6 +10,9 @@ trap cleanup EXIT
 printf '#!/bin/sh\necho first\n' >"$fixture/esgw-v1"
 printf '#!/bin/sh\necho second\n' >"$fixture/esgw-v2"
 chmod 0755 "$fixture/esgw-v1" "$fixture/esgw-v2"
+printf '#!/bin/sh\nprintf "systemctl %%s\\n" "$*" >>"$LIFECYCLE_LOG"\n' >"$fixture/systemctl"
+printf '#!/bin/sh\nprintf "tmpfiles %%s\\n" "$*" >>"$LIFECYCLE_LOG"\n' >"$fixture/systemd-tmpfiles"
+chmod 0755 "$fixture/systemctl" "$fixture/systemd-tmpfiles"
 
 DESTDIR="$stage" "$root/packaging/scripts/install.sh" "$fixture/esgw-v1" >/dev/null
 test -x "$stage/usr/local/bin/esgw"
@@ -35,4 +38,16 @@ test -d "$stage/var/lib/esgw"
 DESTDIR="$stage" "$root/packaging/scripts/uninstall.sh" --purge >/dev/null
 test ! -e "$stage/etc/esgw"
 test ! -e "$stage/var/lib/esgw"
+
+LIFECYCLE_LOG="$fixture/lifecycle.log"
+export LIFECYCLE_LOG
+(
+	PATH="$fixture:$PATH"
+	destdir=
+	. "$root/packaging/scripts/lib.sh"
+	reload_and_restart
+)
+grep -q '^systemctl daemon-reload$' "$LIFECYCLE_LOG"
+grep -q '^systemctl enable esgw.service$' "$LIFECYCLE_LOG"
+grep -q '^systemctl restart esgw.service$' "$LIFECYCLE_LOG"
 echo "packaging install lifecycle: ok"
