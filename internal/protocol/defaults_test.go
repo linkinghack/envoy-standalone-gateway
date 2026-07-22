@@ -89,3 +89,13 @@ func TestApplyDefaultsS2(t *testing.T) {
 		t.Fatalf("connection: %+v", order.Spec.Connection)
 	}
 }
+
+func TestApplyDefaultsDoesNotSynthesizeHTTPForL4(t *testing.T) {
+	for _, p := range []ListenerProtocol{ProtocolTCP, ProtocolTLS, ProtocolUDP} {
+		l := &Listener{Spec: ListenerSpec{Port: 1234, Protocol: p}}
+		ApplyDefaults(&ConfigSet{Listeners: []*Listener{l}})
+		if l.Spec.HTTP != nil {
+			t.Fatalf("protocol %s synthesized HTTP defaults: %+v", p, l.Spec.HTTP)
+		}
+	}
+}

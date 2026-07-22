@@ -34,6 +34,7 @@ func link(cs *protocol.ConfigSet, opts Options, certs certVerifier) (*linked, []
 	errs = append(errs, resolveReferences(cs, lk)...)
 	errs = append(errs, checkListenerAddressUnique(cs)...)
 	errs = append(errs, checkRouteForm(cs, lk)...)
+	errs = append(errs, checkL4RouteConstraints(cs, lk)...)
 	errs = append(errs, checkHostnameConflicts(cs, lk)...)
 	errs = append(errs, checkPolicyAttachmentLevels(cs, lk)...)
 	errs = append(errs, checkTLSRules(cs)...)
@@ -195,6 +196,113 @@ func checkRouteForm(cs *protocol.ConfigSet, lk *linked) []CompileError {
 	return errs
 }
 
+// checkL4RouteConstraints 校验能够无歧义地映射为 Envoy network/UDP filter 的
+// L4 路由集合：TCP/UDP 恰好一个 forward；TLS 至少一个 forward，且每条 route
+// 必须声明非空、大小写不敏感且不重复的 SNI。L4 Listener/Route 不接受 HTTP
+// Policy；全局 Gateway Policy 只作用于 HTTP Listener，因此不在这里禁止。
+func checkL4RouteConstraints(cs *protocol.ConfigSet, lk *linked) []CompileError {
+	type attachedRoute struct {
+		route         *protocol.Route
+		listenerIndex int
+	}
+	attached := map[string][]attachedRoute{}
+	var errs []CompileError
+
+	for _, l := range cs.Listeners {
+		if isHTTPProtocol(l.Spec.Protocol) {
+			continue
+		}
+		if l.Spec.HTTP != nil {
+			errs = append(errs, linkError(l.Origin, protocol.KindListener, l.Metadata.Name,
+				"spec.http", "spec.http is not allowed on %s listener %q", l.Spec.Protocol, l.Metadata.Name))
+		}
+		for i := range l.Spec.Policies {
+			errs = append(errs, linkError(l.Origin, protocol.KindListener, l.Metadata.Name,
+				fmt.Sprintf("spec.policies[%d]", i),
+				"HTTP policy is not allowed on %s listener %q", l.Spec.Protocol, l.Metadata.Name))
+		}
+	}
+
+	for _, r := range cs.Routes {
+		if r.Spec.Forward == nil || len(r.Spec.Rules) > 0 {
+			continue // 形态错误由 checkRouteForm 负责，避免级联噪声
+		}
+		if len(r.Spec.Hostnames) > 0 {
+			errs = append(errs, linkError(r.Origin, protocol.KindRoute, r.Metadata.Name,
+				"spec.hostnames", "hostnames are not allowed on an L4 forward route; use forward.sniHosts for TLS"))
+		}
+		for i, listenerName := range r.Spec.Listeners {
+			l, ok := lk.listeners[listenerName]
+			if !ok || isHTTPProtocol(l.Spec.Protocol) {
+				continue
+			}
+			attached[listenerName] = append(attached[listenerName], attachedRoute{route: r, listenerIndex: i})
+		}
+		if len(r.Spec.Policies) > 0 {
+			for i := range r.Spec.Policies {
+				errs = append(errs, linkError(r.Origin, protocol.KindRoute, r.Metadata.Name,
+					fmt.Sprintf("spec.policies[%d]", i),
+					"HTTP policy is not allowed on an L4 forward route"))
+			}
+		}
+	}
+
+	for _, l := range sortedListeners(cs.Listeners) {
+		if isHTTPProtocol(l.Spec.Protocol) {
+			continue
+		}
+		routes := attached[l.Metadata.Name]
+		if l.Spec.Protocol == protocol.ProtocolTCP || l.Spec.Protocol == protocol.ProtocolUDP {
+			switch len(routes) {
+			case 0:
+				errs = append(errs, linkError(l.Origin, protocol.KindListener, l.Metadata.Name,
+					"spec.protocol", "protocol %s requires exactly one attached forward route, got 0", l.Spec.Protocol))
+			case 1:
+				// valid
+			default:
+				for _, a := range routes[1:] {
+					errs = append(errs, linkError(a.route.Origin, protocol.KindRoute, a.route.Metadata.Name,
+						fmt.Sprintf("spec.listeners[%d]", a.listenerIndex),
+						"listener %q with protocol %s accepts exactly one forward route (already attached by route %q)",
+						l.Metadata.Name, l.Spec.Protocol, routes[0].route.Metadata.Name))
+				}
+			}
+			continue
+		}
+
+		if len(routes) == 0 {
+			errs = append(errs, linkError(l.Origin, protocol.KindListener, l.Metadata.Name,
+				"spec.protocol", "protocol TLS requires at least one attached forward route with sniHosts"))
+			continue
+		}
+		claimed := map[string]string{}
+		for _, a := range routes {
+			hosts := a.route.Spec.Forward.SNIHosts
+			if len(hosts) == 0 {
+				errs = append(errs, linkError(a.route.Origin, protocol.KindRoute, a.route.Metadata.Name,
+					"spec.forward.sniHosts", "at least one sniHost is required on TLS listener %q", l.Metadata.Name))
+				continue
+			}
+			for i, host := range hosts {
+				norm := strings.ToLower(strings.TrimSpace(host))
+				path := fmt.Sprintf("spec.forward.sniHosts[%d]", i)
+				if norm == "" {
+					errs = append(errs, linkError(a.route.Origin, protocol.KindRoute, a.route.Metadata.Name,
+						path, "sniHost must not be empty"))
+					continue
+				}
+				if prev, ok := claimed[norm]; ok {
+					errs = append(errs, linkError(a.route.Origin, protocol.KindRoute, a.route.Metadata.Name,
+						path, "sniHost %q on listener %q conflicts with route %q", host, l.Metadata.Name, prev))
+					continue
+				}
+				claimed[norm] = a.route.Metadata.Name
+			}
+		}
+	}
+	return errs
+}
+
 // checkHostnameConflicts 校验同一 Listener 下各 Route 的 hostname 同精度不重复
 // （协议 §3.3 要点 1：精确 > 通配 > 兜底，同精度冲突 = 编译错误）。
 // 仅对 HTTP 形态的 Route 生效（forward 形态无 hostnames）；hostname 比较大小写不敏感。
@@ -325,18 +433,18 @@ func policyTypeKey(s *protocol.PolicySpec) string {
 	return ""
 }
 
-// checkTLSRules 校验 TLS 必配/禁配（协议 §3.2）：
-// HTTPS/TLS 必须有 spec.tls；HTTP/TCP/UDP 不得有。
+// checkTLSRules 校验 TLS 终止配置（协议 §3.2）：HTTPS 必须有 spec.tls；
+// HTTP/TCP/TLS passthrough/UDP 不得有，避免用户误以为 passthrough 会终止 TLS。
 func checkTLSRules(cs *protocol.ConfigSet) []CompileError {
 	var errs []CompileError
 	for _, l := range cs.Listeners {
 		switch l.Spec.Protocol {
-		case protocol.ProtocolHTTPS, protocol.ProtocolTLS:
+		case protocol.ProtocolHTTPS:
 			if l.Spec.TLS == nil {
 				errs = append(errs, linkError(l.Origin, protocol.KindListener, l.Metadata.Name,
 					"spec.tls", "spec.tls is required for protocol %s", l.Spec.Protocol))
 			}
-		case protocol.ProtocolHTTP, protocol.ProtocolTCP, protocol.ProtocolUDP:
+		case protocol.ProtocolHTTP, protocol.ProtocolTCP, protocol.ProtocolTLS, protocol.ProtocolUDP:
 			if l.Spec.TLS != nil {
 				errs = append(errs, linkError(l.Origin, protocol.KindListener, l.Metadata.Name,
 					"spec.tls", "spec.tls is not allowed for protocol %s", l.Spec.Protocol))

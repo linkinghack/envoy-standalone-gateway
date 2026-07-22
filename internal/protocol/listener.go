@@ -16,13 +16,14 @@ type ListenerSpec struct {
 	Address    string             `json:"address,omitempty" jsonschema:"minLength=1"` // 默认 0.0.0.0；支持 IPv6 "::"
 	Port       int32              `json:"port" jsonschema:"minimum=1,maximum=65535"`
 	Protocol   ListenerProtocol   `json:"protocol"`
-	TLS        *ListenerTLS       `json:"tls,omitempty"` // protocol 为 HTTPS/TLS 时必填（编译期校验）
+	TLS        *ListenerTLS       `json:"tls,omitempty"` // protocol 为 HTTPS 时必填；TLS 表示不终止连接的 SNI passthrough
 	HTTP       *ListenerHTTP      `json:"http,omitempty"`
 	Policies   []PolicyAttachment `json:"policies,omitempty"`   // Listener 级策略引用
 	EnvoyPatch []EnvoyPatch       `json:"envoyPatch,omitempty"` // escape hatch（协议 §7.1）
 }
 
-// ListenerTLS 是 TLS 终止配置（protocol 为 HTTPS/TLS 时使用）。
+// ListenerTLS 是 HTTPS 的 TLS 终止配置。protocol: TLS 表示 TLS passthrough，
+// 只读取 ClientHello SNI 且不持有证书，因此禁止配置本字段。
 type ListenerTLS struct {
 	Certificates []Certificate `json:"certificates"`         // 多证书 = SNI 多域名（FR-1.2）
 	MinVersion   TLSVersion    `json:"minVersion,omitempty"` // 默认 "1.2"

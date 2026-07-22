@@ -22,7 +22,7 @@ type RouteSpec struct {
 	EnvoyPatch []EnvoyPatch       `json:"envoyPatch,omitempty"` // escape hatch（协议 §7.1）
 }
 
-// Forward 是 L4 路由形态（protocol: TCP/TLS 的 Listener）。
+// Forward 是 L4 路由形态（protocol: TCP/TLS/UDP 的 Listener）。
 type Forward struct {
 	Upstream string   `json:"upstream"`
 	SNIHosts []string `json:"sniHosts,omitempty"` // 仅 protocol: TLS 的 listener 可用

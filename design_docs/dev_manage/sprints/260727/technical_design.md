@@ -7,10 +7,12 @@ HTTP 与 L4 都从同一 `protocol.ConfigSet` 进入 F1–F7。IR 继续承载 E
 | Listener 协议 | Envoy 映射 | 路由约束 |
 |---|---|---|
 | TCP | `envoy.filters.network.tcp_proxy` | 恰好一个无 `sniHosts` forward |
-| TLS | `tls_inspector` + 按 `sniHosts` 排序的 filter chain + `tcp_proxy` | 每条 route 至少一个 SNI；重叠/兜底冲突报错 |
+| TLS | `tls_inspector` + 按 `sniHosts` 排序的 filter chain + `tcp_proxy` | 每条 route 至少一个 SNI；缺失/重复报错 |
 | UDP | UDP listener + `envoy.filters.udp_listener.udp_proxy` | 恰好一个 forward；禁止 TLS/HTTP 字段 |
 
-TCP/TLS cluster 复用现有 Upstream；UDP cluster 显式设置 UDP upstream protocol options。L4 不生成 HTTP route filter、retry/header/policy 配置，挂 HTTP-only policy 必须报 link 错误。
+TCP/TLS/UDP cluster 复用现有 Upstream。Envoy 的 Cluster 在此路径承载端点和负载均衡、没有独立的 raw UDP protocol 开关；UDP 语义由 listener socket 与 `udp_proxy` 的 upstream socket 管理。单后端 UDP 暂用跨 1.37–1.39 稳定的 `cluster` route specifier；其替代 matcher 在官方 API 中仍标记 work-in-progress，升级前不得为了消除 deprecated 标记牺牲稳定性。L4 不生成 HTTP route filter、retry/header/policy 配置，挂 HTTP-only policy 必须报 link 错误。
+
+`protocol: TLS` 固定为 passthrough：禁止 `Listener.spec.tls`，不生成 DownstreamTlsContext/Secret；`tls_inspector` 只读取 ClientHello SNI。HTTPS 仍是唯一使用 Listener TLS 终止配置的协议。
 
 ## 2. P1 HTTP 策略
 

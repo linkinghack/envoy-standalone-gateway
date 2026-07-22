@@ -113,7 +113,14 @@ func TestListenerAddressUnique(t *testing.T) {
 			l.Spec.Address = "::"
 			return l
 		}
-		cs := &protocol.ConfigSet{Listeners: []*protocol.Listener{mk("a"), mk("b")}}
+		cs := &protocol.ConfigSet{
+			Listeners: []*protocol.Listener{mk("a"), mk("b")},
+			Routes: []*protocol.Route{
+				newForwardRoute("ra", []string{"a"}, "app"),
+				newForwardRoute("rb", []string{"b"}, "app"),
+			},
+			Upstreams: []*protocol.Upstream{newUpstream("app")},
+		}
 		assertLinkErrs(t, linkErrs(cs), []wantErr{
 			{kind: protocol.KindListener, name: "b", path: "spec.port", msg: `"[::]:443" conflicts with listener "a"`},
 		})
@@ -143,7 +150,10 @@ func TestRouteForm(t *testing.T) {
 	t.Run("rules route on L4 listener", func(t *testing.T) {
 		cs := &protocol.ConfigSet{
 			Listeners: []*protocol.Listener{newListener("tcp", 3306, protocol.ProtocolTCP)},
-			Routes:    []*protocol.Route{newHTTPRoute("r1", []string{"tcp"}, nil, "app")},
+			Routes: []*protocol.Route{
+				newHTTPRoute("r1", []string{"tcp"}, nil, "app"),
+				newForwardRoute("valid", []string{"tcp"}, "app"),
+			},
 			Upstreams: []*protocol.Upstream{newUpstream("app")},
 		}
 		assertLinkErrs(t, linkErrs(cs), []wantErr{
@@ -167,7 +177,10 @@ func TestRouteForm(t *testing.T) {
 		r.Spec.Forward = &protocol.Forward{Upstream: "app"}
 		cs := &protocol.ConfigSet{
 			Listeners: []*protocol.Listener{newListener("tcp", 3306, protocol.ProtocolTCP)},
-			Routes:    []*protocol.Route{r},
+			Routes: []*protocol.Route{
+				r,
+				newForwardRoute("valid", []string{"tcp"}, "app"),
+			},
 			Upstreams: []*protocol.Upstream{newUpstream("app")},
 		}
 		assertLinkErrs(t, linkErrs(cs), []wantErr{
@@ -199,7 +212,7 @@ func TestRouteForm(t *testing.T) {
 	})
 
 	t.Run("boundary: forms match protocols", func(t *testing.T) {
-		tlsLis := newTLSListener("tls", 8443, protocol.ProtocolTLS, "/x.crt", "/x.key")
+		tlsLis := newListener("tls", 8443, protocol.ProtocolTLS)
 		cs := &protocol.ConfigSet{
 			Listeners: []*protocol.Listener{
 				newListener("http", 80, protocol.ProtocolHTTP),
@@ -216,6 +229,76 @@ func TestRouteForm(t *testing.T) {
 			Upstreams: []*protocol.Upstream{newUpstream("app")},
 		}
 		assertNoErrs(t, linkErrs(cs))
+	})
+}
+
+// TestL4RouteConstraints 覆盖 L4 Listener 到 Envoy filter 的无歧义约束。
+func TestL4RouteConstraints(t *testing.T) {
+	t.Run("TCP requires one route", func(t *testing.T) {
+		cs := &protocol.ConfigSet{Listeners: []*protocol.Listener{newListener("tcp", 3306, protocol.ProtocolTCP)}}
+		assertLinkErrs(t, linkErrs(cs), []wantErr{
+			{kind: protocol.KindListener, name: "tcp", path: "spec.protocol", msg: "requires exactly one attached forward route, got 0"},
+		})
+	})
+
+	t.Run("UDP rejects second route", func(t *testing.T) {
+		cs := &protocol.ConfigSet{
+			Listeners: []*protocol.Listener{newListener("udp", 5353, protocol.ProtocolUDP)},
+			Routes: []*protocol.Route{
+				newForwardRoute("first", []string{"udp"}, "a"),
+				newForwardRoute("second", []string{"udp"}, "b"),
+			},
+			Upstreams: []*protocol.Upstream{newUpstream("a"), newUpstream("b")},
+		}
+		assertLinkErrs(t, linkErrs(cs), []wantErr{
+			{kind: protocol.KindRoute, name: "second", path: "spec.listeners[0]", msg: `accepts exactly one forward route (already attached by route "first")`},
+		})
+	})
+
+	t.Run("TLS requires SNI", func(t *testing.T) {
+		cs := &protocol.ConfigSet{
+			Listeners: []*protocol.Listener{newListener("tls", 8443, protocol.ProtocolTLS)},
+			Routes:    []*protocol.Route{newForwardRoute("r", []string{"tls"}, "app")},
+			Upstreams: []*protocol.Upstream{newUpstream("app")},
+		}
+		assertLinkErrs(t, linkErrs(cs), []wantErr{
+			{kind: protocol.KindRoute, name: "r", path: "spec.forward.sniHosts", msg: "at least one sniHost is required"},
+		})
+	})
+
+	t.Run("TLS SNI conflicts case insensitively", func(t *testing.T) {
+		cs := &protocol.ConfigSet{
+			Listeners: []*protocol.Listener{newListener("tls", 8443, protocol.ProtocolTLS)},
+			Routes: []*protocol.Route{
+				newForwardRoute("first", []string{"tls"}, "a", "DB.EXAMPLE.COM"),
+				newForwardRoute("second", []string{"tls"}, "b", "db.example.com"),
+			},
+			Upstreams: []*protocol.Upstream{newUpstream("a"), newUpstream("b")},
+		}
+		assertLinkErrs(t, linkErrs(cs), []wantErr{
+			{kind: protocol.KindRoute, name: "second", path: "spec.forward.sniHosts[0]", msg: `conflicts with route "first"`},
+		})
+	})
+
+	t.Run("L4 listener and route reject HTTP policies", func(t *testing.T) {
+		lis := newListener("tcp", 3306, protocol.ProtocolTCP)
+		lis.Spec.HTTP = &protocol.ListenerHTTP{}
+		lis.Spec.Policies = []protocol.PolicyAttachment{{Ref: "rl"}}
+		route := newForwardRoute("r", []string{"tcp"}, "app")
+		route.Spec.Hostnames = []string{"db.example.com"}
+		route.Spec.Policies = []protocol.PolicyAttachment{{Ref: "rl"}}
+		cs := &protocol.ConfigSet{
+			Listeners: []*protocol.Listener{lis},
+			Routes:    []*protocol.Route{route},
+			Upstreams: []*protocol.Upstream{newUpstream("app")},
+			Policies:  []*protocol.Policy{newPolicy("rl", rateLimitSpec())},
+		}
+		assertLinkErrs(t, linkErrs(cs), []wantErr{
+			{kind: protocol.KindListener, name: "tcp", path: "spec.http", msg: "spec.http is not allowed"},
+			{kind: protocol.KindListener, name: "tcp", path: "spec.policies[0]", msg: "HTTP policy is not allowed"},
+			{kind: protocol.KindRoute, name: "r", path: "spec.hostnames", msg: "hostnames are not allowed"},
+			{kind: protocol.KindRoute, name: "r", path: "spec.policies[0]", msg: "HTTP policy is not allowed"},
+		})
 	})
 }
 
@@ -381,12 +464,23 @@ func TestTLSRules(t *testing.T) {
 		})
 	})
 
-	t.Run("TLS passthrough without tls", func(t *testing.T) {
+	t.Run("TLS passthrough without termination config", func(t *testing.T) {
 		cs := &protocol.ConfigSet{
 			Listeners: []*protocol.Listener{newListener("tls", 8443, protocol.ProtocolTLS)},
+			Routes:    []*protocol.Route{newForwardRoute("r", []string{"tls"}, "app", "db.example.com")},
+			Upstreams: []*protocol.Upstream{newUpstream("app")},
+		}
+		assertNoErrs(t, linkErrs(cs))
+	})
+
+	t.Run("TLS passthrough with termination config", func(t *testing.T) {
+		cs := &protocol.ConfigSet{
+			Listeners: []*protocol.Listener{newTLSListener("tls", 8443, protocol.ProtocolTLS, "/x.crt", "/x.key")},
+			Routes:    []*protocol.Route{newForwardRoute("r", []string{"tls"}, "app", "db.example.com")},
+			Upstreams: []*protocol.Upstream{newUpstream("app")},
 		}
 		assertLinkErrs(t, linkErrs(cs), []wantErr{
-			{kind: protocol.KindListener, name: "tls", path: "spec.tls", msg: "required for protocol TLS"},
+			{kind: protocol.KindListener, name: "tls", path: "spec.tls", msg: "not allowed for protocol TLS"},
 		})
 	})
 
@@ -402,21 +496,29 @@ func TestTLSRules(t *testing.T) {
 	t.Run("TCP with tls", func(t *testing.T) {
 		cs := &protocol.ConfigSet{
 			Listeners: []*protocol.Listener{newTLSListener("tcp", 3306, protocol.ProtocolTCP, "/x.crt", "/x.key")},
+			Routes:    []*protocol.Route{newForwardRoute("r", []string{"tcp"}, "app")},
+			Upstreams: []*protocol.Upstream{newUpstream("app")},
 		}
 		assertLinkErrs(t, linkErrs(cs), []wantErr{
 			{kind: protocol.KindListener, name: "tcp", path: "spec.tls", msg: "not allowed for protocol TCP"},
 		})
 	})
 
-	t.Run("boundary: HTTPS with tls / plain HTTP,TCP,UDP without", func(t *testing.T) {
+	t.Run("boundary: HTTPS with tls / plain HTTP,TCP,TLS,UDP without", func(t *testing.T) {
 		cs := &protocol.ConfigSet{
 			Listeners: []*protocol.Listener{
 				newTLSListener("https", 443, protocol.ProtocolHTTPS, "/x.crt", "/x.key"),
-				newTLSListener("tls", 8443, protocol.ProtocolTLS, "/x.crt", "/x.key"),
+				newListener("tls", 8443, protocol.ProtocolTLS),
 				newListener("http", 80, protocol.ProtocolHTTP),
 				newListener("tcp", 3306, protocol.ProtocolTCP),
 				newListener("udp", 53, protocol.ProtocolUDP),
 			},
+			Routes: []*protocol.Route{
+				newForwardRoute("tcp", []string{"tcp"}, "app"),
+				newForwardRoute("tls", []string{"tls"}, "app", "db.example.com"),
+				newForwardRoute("udp", []string{"udp"}, "app"),
+			},
+			Upstreams: []*protocol.Upstream{newUpstream("app")},
 		}
 		assertNoErrs(t, linkErrs(cs))
 	})

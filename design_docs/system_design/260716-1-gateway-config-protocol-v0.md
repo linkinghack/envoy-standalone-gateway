@@ -89,7 +89,7 @@ spec:
   address: 0.0.0.0              # 默认 0.0.0.0；支持 IPv6 "::"
   port: 443
   protocol: HTTPS               # HTTP | HTTPS | TCP | TLS | UDP（见下表）
-  tls:                          # protocol 为 HTTPS/TLS 时必填
+  tls:                          # 仅 protocol: HTTPS 时必填；TLS passthrough 禁止配置
     certificates:               # 多证书 = SNI 多域名（FR-1.2）
       - certFile: /etc/esgw/certs/example.com.crt
         keyFile: /etc/esgw/certs/example.com.key
@@ -111,7 +111,7 @@ spec:
 | TLS | TLS passthrough，按 SNI 分流不解密 | P1 |
 | UDP | UDP 转发 | P2 |
 
-约束：`address:port` 组合在配置集内唯一（编译期检查）。证书 SNI 匹配：编译器从证书 SAN/CN 提取域名生成 filter chain match，无需用户手写 `sniHosts`；重叠时显式 `sniHosts` 可加字段消歧（P1）。
+约束：`address:port` 组合在配置集内唯一（编译期检查）。HTTPS 证书的 SNI 匹配由编译器从证书 SAN/CN 生成 filter chain match，证书之间重叠是编译错误；`protocol: TLS` 不终止 TLS，SNI 来自其 L4 Route 的 `forward.sniHosts`。
 
 ### 3.3 Route
 
@@ -166,7 +166,7 @@ spec:
 3. `retry.on` 枚举 v0 支持：`5xx`、`gateway-error`、`connect-failure`、`reset`、`retriable-4xx`；默认不重试（显式声明才开启，避免非幂等请求意外重试）。
 4. rule 可带可选 `name`（Route 内唯一，字符集同 `metadata.name`）：它是 rule 级 `envoyPatch`（§7.1，`target: route/<name>`）的定位锚；无 `name` 的 rule 不可被 rule 级 patch 定位（编译层未决事项 C1 决议，2026-07-19）。`name` 不影响匹配语义与顺序。
 
-#### 3.3.5 L4 形态（P1，protocol: TCP/TLS 的 Listener）
+#### 3.3.5 L4 形态（P1，protocol: TCP/TLS/UDP 的 Listener）
 
 L4 无 HTTP 匹配语义，Route 退化为 `forward` 单字段（TLS passthrough 可按 `sniHosts` 分流）：
 
@@ -180,7 +180,7 @@ spec:
     # sniHosts: ["db.example.com"]   # 仅 protocol: TLS 的 listener 可用
 ```
 
-`rules` 与 `forward` 互斥；挂接 L4 Listener 的 Route 出现 `rules` 是编译错误（反之亦然）。
+`rules` 与 `forward` 互斥；挂接 L4 Listener 的 Route 出现 `rules` 是编译错误（反之亦然）。TCP/UDP Listener 必须恰好挂一条 forward Route；TLS Listener 可挂多条，但每条必须提供至少一个 `sniHosts`，同一 Listener 内大小写归一后不得重复。TLS 是原始字节透传，不配置 Listener `tls` 终止字段。L4 Listener/Route 禁止挂仅对 HTTP 生效的 Policy。
 
 ### 3.4 Upstream
 

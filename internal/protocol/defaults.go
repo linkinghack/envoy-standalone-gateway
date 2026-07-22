@@ -77,13 +77,15 @@ func ApplyDefaults(cs *ConfigSet) {
 				s.TLS.ALPN = append([]string(nil), DefaultALPN...)
 			}
 		}
-		if s.HTTP == nil {
-			s.HTTP = &ListenerHTTP{}
-		}
-		if s.HTTP.HTTP2 == nil {
-			// 默认 true（HTTPS）；HTTP 明文默认 false（协议 §3.2）。
-			v := s.Protocol == ProtocolHTTPS
-			s.HTTP.HTTP2 = &v
+		if s.Protocol == ProtocolHTTP || s.Protocol == ProtocolHTTPS {
+			if s.HTTP == nil {
+				s.HTTP = &ListenerHTTP{}
+			}
+			if s.HTTP.HTTP2 == nil {
+				// 默认 true（HTTPS）；HTTP 明文默认 false（协议 §3.2）。
+				v := s.Protocol == ProtocolHTTPS
+				s.HTTP.HTTP2 = &v
+			}
 		}
 	}
 
