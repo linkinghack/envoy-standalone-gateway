@@ -26,6 +26,8 @@ M-PROC 不直接访问 Envoy admin。`Probe` 由 M-STATE 提供，只暴露 `Rea
 
 管理面关闭只停止自己的 HTTP/ADS/采集 goroutine，不向 Envoy 发送退出信号。托管进程可跨 esgw 重启继续服务；新管理面通过 record + M-STATE epoch 重新接管。
 
+Envoy 官方 wrapper 在任一 child 非预期退出时退出整个 restarter，由外部进程管理器从 fresh start 恢复；CLI 的 `--skip-hot-restart-on-no-parent` 仅覆盖新进程建立 IPC 前父进程已消失，不覆盖 IPC 后父进程崩溃。因此本实现只对 epoch 0 的普通运行崩溃自动退避 fresh start；epoch>0 当前进程异常退出时进入 degraded，不猜测共享内存/旧 drain 进程状态。下一次显式发布或人工确认后再恢复，DL6 真实 e2e 继续取证。
+
 ## 4. static Apply 事务
 
 1. `static.Render(IR)` 在内存完成；
