@@ -57,6 +57,10 @@ e2e-xds: ## ADS 模式 e2e（esgw serve + 真实 Envoy；docker compose）
 e2e-static-managed: ## static 托管 hot restart e2e（真实 Envoy）
 	e2e/static-managed/run.sh
 
+.PHONY: e2e-topology-matrix
+e2e-topology-matrix: ## T1/T2 × xDS/static 四组合真实 Envoy e2e
+	e2e/topology-matrix/run.sh
+
 .PHONY: golden-update
 golden-update: ## 刷新 golden 快照（diff 必须人工评审）
 	go test ./internal/golden -update

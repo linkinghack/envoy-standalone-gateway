@@ -1,0 +1,30 @@
+apiVersion: esgw/v1alpha1
+kind: Listener
+metadata:
+  name: ingress
+spec:
+  address: 0.0.0.0
+  port: 10080
+  protocol: HTTP
+---
+apiVersion: esgw/v1alpha1
+kind: Route
+metadata:
+  name: echo
+spec:
+  listeners: [ingress]
+  hostnames: [gateway.test]
+  rules:
+    - match:
+        path: {prefix: /}
+      backends:
+        - upstream: echo
+---
+apiVersion: esgw/v1alpha1
+kind: Upstream
+metadata:
+  name: echo
+spec:
+  endpoints:
+    - address: 172.31.26.11
+      port: 8080

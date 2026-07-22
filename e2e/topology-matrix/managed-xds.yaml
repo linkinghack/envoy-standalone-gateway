@@ -1,0 +1,22 @@
+dataDir: /var/lib/esgw
+deliver:
+  mode: xds
+  xds:
+    listen: 127.0.0.1:18000
+    adminAddress: unix:///var/lib/esgw/run/managed-xds-admin.sock
+proc:
+  enabled: true
+  envoyPath: /usr/local/bin/envoy
+  baseID: 26072601
+  liveTimeout: 15s
+  drainTime: 2s
+  parentShutdownTime: 2m
+api:
+  listen: 0.0.0.0:8080
+  topology: standalone
+state:
+  readyInterval: 1s
+  statsInterval: 1s
+  clustersInterval: 1s
+  configInterval: 1s
+  certsInterval: 30s

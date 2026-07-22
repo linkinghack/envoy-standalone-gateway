@@ -1,0 +1,18 @@
+dataDir: /var/lib/esgw
+deliver:
+  mode: static
+  xds:
+    adminAddress: unix:///var/lib/esgw/run/external-static-admin.sock
+  static:
+    outputPath: /var/lib/esgw/envoy/envoy.yaml
+proc:
+  enabled: false
+api:
+  listen: 0.0.0.0:8080
+  topology: sidecar
+state:
+  readyInterval: 1s
+  statsInterval: 1s
+  clustersInterval: 1s
+  configInterval: 1s
+  certsInterval: 30s
