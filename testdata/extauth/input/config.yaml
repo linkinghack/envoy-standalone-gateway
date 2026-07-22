@@ -1,0 +1,61 @@
+apiVersion: esgw/v1alpha1
+kind: Listener
+metadata: {name: http-auth}
+spec: {address: 127.0.0.1, port: 18081, protocol: HTTP}
+---
+apiVersion: esgw/v1alpha1
+kind: Listener
+metadata: {name: grpc-auth}
+spec: {address: 127.0.0.1, port: 18082, protocol: HTTP}
+---
+apiVersion: esgw/v1alpha1
+kind: Policy
+metadata: {name: http-auth}
+spec:
+  extAuth:
+    http: {address: "http://127.0.0.1:19000", pathPrefix: /verify}
+    failOpen: true
+---
+apiVersion: esgw/v1alpha1
+kind: Policy
+metadata: {name: grpc-auth}
+spec:
+  extAuth:
+    grpc: {address: "127.0.0.1:19001"}
+---
+apiVersion: esgw/v1alpha1
+kind: Policy
+metadata: {name: auth-off}
+spec:
+  extAuth: {disabled: true}
+---
+apiVersion: esgw/v1alpha1
+kind: Route
+metadata: {name: http-api}
+spec:
+  listeners: [http-auth]
+  policies: [http-auth]
+  rules:
+    - name: public
+      match: {path: {prefix: /public}}
+      backends: [{upstream: app}]
+      policies: [auth-off]
+    - name: protected
+      match: {path: {prefix: /}}
+      backends: [{upstream: app}]
+---
+apiVersion: esgw/v1alpha1
+kind: Route
+metadata: {name: grpc-api}
+spec:
+  listeners: [grpc-auth]
+  policies: [grpc-auth]
+  rules:
+    - match: {path: {prefix: /}}
+      backends: [{upstream: app}]
+---
+apiVersion: esgw/v1alpha1
+kind: Upstream
+metadata: {name: app}
+spec:
+  endpoints: [{address: 127.0.0.1, port: 18080}]

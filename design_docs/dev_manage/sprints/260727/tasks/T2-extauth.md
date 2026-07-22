@@ -10,4 +10,8 @@
 
 ## 进展
 
-- 进行中：完成 gRPC `host:port`、HTTP(S) URL/显式端口/pathPrefix 与 disabled 互斥的协议校验；下一步实现 Listener 级 provider 归一化、filter/cluster 和 per-route disable。
+- 已完成：
+  - gRPC `host:port`、HTTP(S) URL/显式端口/pathPrefix、HTTPS trust 与 disabled 互斥校验；
+  - Listener 级 provider/failOpen 冲突诊断、HTTP/gRPC auth cluster、filter 固定顺序和 per-route disable；
+  - static/xDS golden 经 Envoy 1.37.5、1.38.3、1.39.0 validate；
+  - `e2e/extauth/run.sh` 真实覆盖 HTTP/gRPC allow/deny、route disable、fail-open/fail-closed。

@@ -42,6 +42,7 @@ var goodCases = []string{
 	"s1",                       // 协议 §8.1 多域名 TLS 反代
 	"s2",                       // 协议 §8.2 API 网关（含同构补全）
 	"l4",                       // P1 TCP/TLS passthrough/UDP
+	"extauth",                  // P1 HTTP/gRPC ext_authz + route disable
 	"patch-merge",              // 协议 §7.1 envoyPatch merge 形态
 	"patch-jsonpatch",          // 协议 §7.1 envoyPatch jsonPatch 形态
 	"envoy-resources",          // 协议 §7.2 EnvoyResources（allowOverride 默认 false）

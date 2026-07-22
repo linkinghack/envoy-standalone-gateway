@@ -22,6 +22,9 @@ ADS 模式（esgw serve + 接入 bootstrap）的对应 e2e 见 [`xds/`](xds/)
 L4 场景见 [`l4/`](l4/)（`make e2e-l4`）：使用同一份 L4 golden static
 产物验证 TCP、两条 TLS passthrough SNI 分流、未知 SNI 拒绝和 UDP 回包。
 
+外部鉴权场景见 [`extauth/`](extauth/)（`make e2e-extauth`）：真实覆盖 HTTP/gRPC
+allow/deny、route disable、HTTP fail-open 与 gRPC fail-closed。
+
 默认 `go test ./...` 不触发（工程基线 §3：e2e 依赖 docker）。
 
 ## 关键决策

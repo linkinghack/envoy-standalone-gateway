@@ -65,6 +65,10 @@ e2e-topology-matrix: ## T1/T2 × xDS/static 四组合真实 Envoy e2e
 e2e-l4: ## TCP/TLS passthrough/UDP 真实流量 e2e
 	e2e/l4/run.sh
 
+.PHONY: e2e-extauth
+e2e-extauth: ## HTTP/gRPC extAuth 真实流量 e2e
+	e2e/extauth/run.sh
+
 .PHONY: golden-update
 golden-update: ## 刷新 golden 快照（diff 必须人工评审）
 	go test ./internal/golden -update
