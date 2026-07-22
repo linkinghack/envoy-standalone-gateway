@@ -44,10 +44,23 @@ const ConfigVersionMetadataKey = "esgw.config_version"
 // EnvoyResources 引入的引用形态资源，在 static bootstrap 中无处安放，不输出，
 // 见 T6 进展记录）。
 func Render(i *ir.IR) ([]byte, error) {
+	return RenderWithOptions(i, RenderOptions{})
+}
+
+// RenderOptions customizes runtime-only bootstrap fields without mutating IR.
+type RenderOptions struct {
+	AdminSocketPath string
+}
+
+// RenderWithOptions renders static YAML with an explicit runtime admin socket.
+func RenderWithOptions(i *ir.IR, options RenderOptions) ([]byte, error) {
 	if i == nil {
 		return nil, fmt.Errorf("render: nil IR")
 	}
-	b := renderBootstrap(i)
+	if options.AdminSocketPath == "" {
+		options.AdminSocketPath = DefaultAdminSocketPath
+	}
+	b := renderBootstrap(i, options)
 	body, err := MarshalYAML(b)
 	if err != nil {
 		return nil, fmt.Errorf("render: %w", err)
@@ -76,7 +89,7 @@ func MarshalYAML(m proto.Message) ([]byte, error) {
 
 // renderBootstrap 深拷贝 IR.Bootstrap 并施加渲染期改写：注入版本 metadata、
 // 覆盖 admin 为 uds、装配 static_resources。IR 本体不变（260717-4 §4.1）。
-func renderBootstrap(i *ir.IR) *bootstrapv3.Bootstrap {
+func renderBootstrap(i *ir.IR, options RenderOptions) *bootstrapv3.Bootstrap {
 	var b *bootstrapv3.Bootstrap
 	if i.Bootstrap != nil {
 		b = proto.Clone(i.Bootstrap).(*bootstrapv3.Bootstrap)
@@ -94,7 +107,7 @@ func renderBootstrap(i *ir.IR) *bootstrapv3.Bootstrap {
 	md.Fields[ConfigVersionMetadataKey] = structpb.NewStringValue(i.Version)
 	b.Admin = &bootstrapv3.Admin{
 		Address: &corev3.Address{
-			Address: &corev3.Address_Pipe{Pipe: &corev3.Pipe{Path: DefaultAdminSocketPath}},
+			Address: &corev3.Address_Pipe{Pipe: &corev3.Pipe{Path: options.AdminSocketPath}},
 		},
 	}
 	b.StaticResources = &bootstrapv3.Bootstrap_StaticResources{

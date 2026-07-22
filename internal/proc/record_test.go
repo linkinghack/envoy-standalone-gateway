@@ -13,7 +13,7 @@ func TestRecordStoreRoundTrip(t *testing.T) {
 	if _, err := store.Load(); !errors.Is(err, ErrNoRecord) {
 		t.Fatalf("empty Load() = %v", err)
 	}
-	want := Record{PID: 123, BaseID: 4, Epoch: 2, ConfigPath: "/tmp/envoy.yaml", BinaryPath: "/bin/envoy", StartedAt: time.Unix(42, 0).UTC(), EnvoyVersion: "1.39.0", State: "running"}
+	want := Record{PID: 123, BaseID: 4, Epoch: 2, NextEpoch: 3, ConfigPath: "/tmp/envoy.yaml", BinaryPath: "/bin/envoy", StartedAt: time.Unix(42, 0).UTC(), EnvoyVersion: "1.39.0", State: "running"}
 	if err := store.Save(want); err != nil {
 		t.Fatal(err)
 	}

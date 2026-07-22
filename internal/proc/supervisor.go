@@ -63,15 +63,16 @@ type Supervisor struct {
 	store  RecordStore
 	log    *slog.Logger
 
-	mu      sync.Mutex
-	status  SupervisorStatus
-	current Process
-	started time.Time
-	ctx     context.Context
-	cancel  context.CancelFunc
-	closed  bool
-	events  chan SupervisorEvent
-	backoff *Backoff
+	mu         sync.Mutex
+	status     SupervisorStatus
+	current    Process
+	started    time.Time
+	ctx        context.Context
+	cancel     context.CancelFunc
+	closed     bool
+	restarting bool
+	events     chan SupervisorEvent
+	backoff    *Backoff
 }
 
 // NewSupervisor validates dependencies and constructs a detached lifecycle owner.
@@ -155,7 +156,7 @@ func (s *Supervisor) spawnAndWait(ctx context.Context, epoch int, skipNoParent b
 	started := time.Now().UTC()
 	record := Record{
 		PID: process.PID(), BaseID: s.config.BaseID, Epoch: epoch, ConfigPath: s.config.ConfigPath,
-		BinaryPath: s.config.Binary.Path, StartedAt: started, EnvoyVersion: s.config.Binary.Version, State: "starting",
+		NextEpoch: epoch + 1, BinaryPath: s.config.Binary.Path, StartedAt: started, EnvoyVersion: s.config.Binary.Version, State: "starting",
 	}
 	if err := s.store.Save(record); err != nil {
 		_ = process.Kill()
@@ -213,6 +214,11 @@ func (s *Supervisor) monitor(process Process, epoch int, started time.Time) {
 		return
 	}
 	s.current = nil
+	if s.restarting {
+		s.mu.Unlock()
+		s.emit("ParentExited", process.PID(), epoch, "current parent exited during hot restart")
+		return
+	}
 	s.mu.Unlock()
 	delay, degraded := s.backoff.Failure(exit.At, exit.At.Sub(started))
 	detail := fmt.Sprintf("unexpected Envoy exit code=%d signal=%s err=%v stderr=%s", exit.Code, exit.Signal, exit.Err, process.StderrTail())
@@ -232,6 +238,71 @@ func (s *Supervisor) monitor(process Process, epoch int, started time.Time) {
 	if err := s.spawnAndWait(s.ctx, 0, false); err != nil {
 		_ = s.degrade(fmt.Sprintf("automatic restart failed: %v", err))
 	}
+}
+
+// HotRestart allocates a never-reused epoch and waits for M-STATE to observe
+// the child LIVE. Failure kills only the child and retains the parent record.
+func (s *Supervisor) HotRestart(ctx context.Context) error {
+	s.mu.Lock()
+	if s.closed || s.ctx == nil {
+		s.mu.Unlock()
+		return errors.New("proc: supervisor is not running")
+	}
+	if s.restarting {
+		s.mu.Unlock()
+		return errors.New("proc: hot restart already in progress")
+	}
+	if s.status.State != "running" {
+		state := s.status.State
+		s.mu.Unlock()
+		return fmt.Errorf("proc: cannot hot restart while supervisor is %s", state)
+	}
+	s.restarting = true
+	s.mu.Unlock()
+	defer func() {
+		s.mu.Lock()
+		s.restarting = false
+		s.mu.Unlock()
+	}()
+
+	record, err := s.store.Load()
+	if err != nil {
+		return fmt.Errorf("proc: load epoch record: %w", err)
+	}
+	epoch := record.NextEpoch
+	record.NextEpoch++
+	record.State = "restarting"
+	if err := s.store.Save(record); err != nil {
+		return err
+	}
+	child, err := s.runner.Start(StartSpec{
+		Binary: s.config.Binary.Path, ConfigPath: s.config.ConfigPath, BaseID: s.config.BaseID, Epoch: epoch,
+		DrainTime: s.config.DrainTime, ParentShutdownTime: s.config.ParentShutdownTime,
+	})
+	if err != nil {
+		return fmt.Errorf("proc: hot restart epoch %d: %w", epoch, err)
+	}
+	started := time.Now().UTC()
+	if err := s.waitForEpoch(ctx, epoch, child.Done()); err != nil {
+		_ = child.Kill()
+		record.State = "running"
+		_ = s.store.Save(record)
+		detail := fmt.Sprintf("epoch %d failed: %v; stderr: %s", epoch, err, child.StderrTail())
+		s.emit("HotRestartFailed", child.PID(), epoch, detail)
+		return fmt.Errorf("proc: hot restart: %s", detail)
+	}
+	record.PID = child.PID()
+	record.Epoch = epoch
+	record.StartedAt = started
+	record.State = "running"
+	if err := s.store.Save(record); err != nil {
+		_ = child.Kill()
+		return err
+	}
+	s.setCurrent(child, epoch, started, "running", "")
+	s.emit("HotRestarted", child.PID(), epoch, "new Envoy epoch is LIVE")
+	go s.monitor(child, epoch, started)
+	return nil
 }
 
 // Status returns a consistent lifecycle snapshot.

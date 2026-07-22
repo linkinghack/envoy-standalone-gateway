@@ -22,13 +22,14 @@ func (p *fakeProbe) ObserveProcess(context.Context) (Observation, error) {
 }
 
 type fakeProcess struct {
-	pid  int
-	done chan Exit
+	pid    int
+	done   chan Exit
+	killed bool
 }
 
 func (p *fakeProcess) PID() int           { return p.pid }
 func (p *fakeProcess) Done() <-chan Exit  { return p.done }
-func (p *fakeProcess) Kill() error        { return nil }
+func (p *fakeProcess) Kill() error        { p.killed = true; return nil }
 func (p *fakeProcess) StderrTail() string { return "fake stderr" }
 
 type fakeRunner struct {
@@ -134,6 +135,45 @@ func TestSupervisorKeepDegradesOnUnconfirmedAdoption(t *testing.T) {
 	}
 	if status := supervisor.Status(); status.State != "degraded" {
 		t.Fatalf("status = %+v", status)
+	}
+}
+
+func TestSupervisorHotRestartSuccessAndFailedEpochIsNotReused(t *testing.T) {
+	runner := &fakeRunner{}
+	probe := &fakeProbe{obs: Observation{Ready: true, Epoch: 0}}
+	supervisor := supervisorFixture(t, runner, probe)
+	if err := supervisor.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	probe.mu.Lock()
+	probe.obs = Observation{Ready: true, Epoch: 1}
+	probe.mu.Unlock()
+	if err := supervisor.HotRestart(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if status := supervisor.Status(); status.State != "running" || status.Epoch != 1 {
+		t.Fatalf("status = %+v", status)
+	}
+
+	probe.mu.Lock()
+	probe.obs = Observation{Ready: false, Epoch: 1}
+	probe.mu.Unlock()
+	supervisor.config.LiveTimeout = 5 * time.Millisecond
+	if err := supervisor.HotRestart(context.Background()); err == nil {
+		t.Fatal("want failed epoch 2")
+	}
+	record, err := supervisor.store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if record.Epoch != 1 || record.NextEpoch != 3 {
+		t.Fatalf("record = %+v", record)
+	}
+	runner.mu.Lock()
+	failed := runner.processes[2]
+	runner.mu.Unlock()
+	if !failed.killed {
+		t.Fatal("failed child was not killed")
 	}
 }
 

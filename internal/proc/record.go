@@ -18,6 +18,7 @@ type Record struct {
 	PID          int       `json:"pid"`
 	BaseID       uint32    `json:"baseID"`
 	Epoch        int       `json:"epoch"`
+	NextEpoch    int       `json:"nextEpoch"`
 	ConfigPath   string    `json:"configPath"`
 	BinaryPath   string    `json:"binaryPath"`
 	StartedAt    time.Time `json:"startedAt"`
@@ -43,6 +44,9 @@ func (s RecordStore) Load() (Record, error) {
 	}
 	if record.PID <= 0 || record.Epoch < 0 || record.ConfigPath == "" || record.BinaryPath == "" {
 		return Record{}, errors.New("proc: invalid process record")
+	}
+	if record.NextEpoch <= record.Epoch {
+		record.NextEpoch = record.Epoch + 1
 	}
 	return record, nil
 }
