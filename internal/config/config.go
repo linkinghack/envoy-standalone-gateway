@@ -20,6 +20,8 @@ import (
 )
 
 // 默认值常量（dev_design 260720-1 §3.1）。
+// Managed Envoy lifecycle defaults retain Envoy's conservative production
+// drain/shutdown timings and bound automatic crash recovery.
 const (
 	DefaultDataDir      = "/var/lib/esgw"
 	DefaultListen       = "127.0.0.1:18000"
@@ -39,13 +41,13 @@ const (
 const DefaultAckTimeout = 15 * time.Second
 
 const (
-	DefaultLiveTimeout       = 30 * time.Second
-	DefaultDrainTime         = 10 * time.Minute
-	DefaultParentShutdown    = 15 * time.Minute
-	DefaultBackoffInitial    = time.Second
-	DefaultBackoffMax        = 30 * time.Second
-	DefaultBackoffResetAfter = time.Minute
-	DefaultGiveUpPer10m      = 5
+	defaultLiveTimeout       = 30 * time.Second
+	defaultDrainTime         = 10 * time.Minute
+	defaultParentShutdown    = 15 * time.Minute
+	defaultBackoffInitial    = time.Second
+	defaultBackoffMax        = 30 * time.Second
+	defaultBackoffResetAfter = time.Minute
+	defaultGiveUpPer10m      = 5
 )
 
 // Config 是 esgw.yaml 的根结构。
@@ -198,28 +200,28 @@ func (c *Config) applyDefaults() {
 		c.Deliver.Static.OutputPath = filepath.Join(c.DataDir, "envoy", "envoy.yaml")
 	}
 	if c.Proc.LiveTimeout.Duration == 0 {
-		c.Proc.LiveTimeout = protocol.Duration{Duration: DefaultLiveTimeout}
+		c.Proc.LiveTimeout = protocol.Duration{Duration: defaultLiveTimeout}
 	}
 	if c.Proc.DrainTime.Duration == 0 {
-		c.Proc.DrainTime = protocol.Duration{Duration: DefaultDrainTime}
+		c.Proc.DrainTime = protocol.Duration{Duration: defaultDrainTime}
 	}
 	if c.Proc.ParentShutdownTime.Duration == 0 {
-		c.Proc.ParentShutdownTime = protocol.Duration{Duration: DefaultParentShutdown}
+		c.Proc.ParentShutdownTime = protocol.Duration{Duration: defaultParentShutdown}
 	}
 	if c.Proc.AdoptPolicy == "" {
 		c.Proc.AdoptPolicy = DefaultAdoptPolicy
 	}
 	if c.Proc.RestartBackoff.Initial.Duration == 0 {
-		c.Proc.RestartBackoff.Initial = protocol.Duration{Duration: DefaultBackoffInitial}
+		c.Proc.RestartBackoff.Initial = protocol.Duration{Duration: defaultBackoffInitial}
 	}
 	if c.Proc.RestartBackoff.Max.Duration == 0 {
-		c.Proc.RestartBackoff.Max = protocol.Duration{Duration: DefaultBackoffMax}
+		c.Proc.RestartBackoff.Max = protocol.Duration{Duration: defaultBackoffMax}
 	}
 	if c.Proc.RestartBackoff.ResetAfter.Duration == 0 {
-		c.Proc.RestartBackoff.ResetAfter = protocol.Duration{Duration: DefaultBackoffResetAfter}
+		c.Proc.RestartBackoff.ResetAfter = protocol.Duration{Duration: defaultBackoffResetAfter}
 	}
 	if c.Proc.RestartBackoff.GiveUpPer10m == 0 {
-		c.Proc.RestartBackoff.GiveUpPer10m = DefaultGiveUpPer10m
+		c.Proc.RestartBackoff.GiveUpPer10m = defaultGiveUpPer10m
 	}
 	if c.API.Listen == "" {
 		c.API.Listen = DefaultAPIListen
@@ -254,6 +256,9 @@ func (c *Config) validate() error {
 	}
 	if err := validateAdminAddress(c.Deliver.XDS.AdminAddress); err != nil {
 		return fmt.Errorf("deliver.xds.adminAddress: %w", err)
+	}
+	if c.Deliver.Mode == ModeStatic && !strings.HasPrefix(c.Deliver.XDS.AdminAddress, "unix:///") {
+		return errors.New("deliver.mode=static requires deliver.xds.adminAddress to use unix:///<path> for hot restart")
 	}
 	if c.Deliver.XDS.AckTimeout.Duration <= 0 {
 		return fmt.Errorf("deliver.xds.ackTimeout must be a positive duration, got %q", c.Deliver.XDS.AckTimeout.String())

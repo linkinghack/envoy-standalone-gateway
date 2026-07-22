@@ -10,15 +10,16 @@ import (
 )
 
 type fakeProbe struct {
-	mu  sync.Mutex
-	obs Observation
-	err error
+	mu    sync.Mutex
+	ready bool
+	epoch int
+	err   error
 }
 
-func (p *fakeProbe) ObserveProcess(context.Context) (Observation, error) {
+func (p *fakeProbe) ObserveProcess(context.Context) (bool, int, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return p.obs, p.err
+	return p.ready, p.epoch, p.err
 }
 
 type fakeProcess struct {
@@ -68,7 +69,7 @@ func supervisorFixture(t *testing.T, runner *fakeRunner, probe *fakeProbe) *Supe
 
 func TestSupervisorFreshStartAndBoundedRestart(t *testing.T) {
 	runner := &fakeRunner{}
-	probe := &fakeProbe{obs: Observation{Ready: true, Epoch: 0}}
+	probe := &fakeProbe{ready: true, epoch: 0}
 	supervisor := supervisorFixture(t, runner, probe)
 	if err := supervisor.Start(context.Background()); err != nil {
 		t.Fatal(err)
@@ -96,7 +97,7 @@ func TestSupervisorFreshStartAndBoundedRestart(t *testing.T) {
 
 func TestSupervisorAdoptsVerifiedProcessWithoutSpawn(t *testing.T) {
 	runner := &fakeRunner{}
-	probe := &fakeProbe{obs: Observation{Ready: true, Epoch: 4}}
+	probe := &fakeProbe{ready: true, epoch: 4}
 	supervisor := supervisorFixture(t, runner, probe)
 	binary, _ := os.Executable()
 	if err := supervisor.store.Save(Record{
@@ -120,7 +121,7 @@ func TestSupervisorAdoptsVerifiedProcessWithoutSpawn(t *testing.T) {
 
 func TestSupervisorKeepDegradesOnUnconfirmedAdoption(t *testing.T) {
 	runner := &fakeRunner{}
-	probe := &fakeProbe{obs: Observation{Ready: false, Epoch: 3}}
+	probe := &fakeProbe{ready: false, epoch: 3}
 	supervisor := supervisorFixture(t, runner, probe)
 	supervisor.config.LiveTimeout = 5 * time.Millisecond
 	binary, _ := os.Executable()
@@ -140,13 +141,13 @@ func TestSupervisorKeepDegradesOnUnconfirmedAdoption(t *testing.T) {
 
 func TestSupervisorHotRestartSuccessAndFailedEpochIsNotReused(t *testing.T) {
 	runner := &fakeRunner{}
-	probe := &fakeProbe{obs: Observation{Ready: true, Epoch: 0}}
+	probe := &fakeProbe{ready: true, epoch: 0}
 	supervisor := supervisorFixture(t, runner, probe)
 	if err := supervisor.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	probe.mu.Lock()
-	probe.obs = Observation{Ready: true, Epoch: 1}
+	probe.ready, probe.epoch = true, 1
 	probe.mu.Unlock()
 	if err := supervisor.HotRestart(context.Background()); err != nil {
 		t.Fatal(err)
@@ -156,7 +157,7 @@ func TestSupervisorHotRestartSuccessAndFailedEpochIsNotReused(t *testing.T) {
 	}
 
 	probe.mu.Lock()
-	probe.obs = Observation{Ready: false, Epoch: 1}
+	probe.ready, probe.epoch = false, 1
 	probe.mu.Unlock()
 	supervisor.config.LiveTimeout = 5 * time.Millisecond
 	if err := supervisor.HotRestart(context.Background()); err == nil {

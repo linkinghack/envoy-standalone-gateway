@@ -239,6 +239,26 @@ func (s *Service) CurrentState(ctx context.Context, refresh bool) (*DataPlaneSta
 	return &state, nil
 }
 
+// ObserveProcess is the narrow M-PROC probe. M-STATE remains the sole Envoy
+// admin consumer while exposing only LIVE and hot restart epoch.
+func (s *Service) ObserveProcess(ctx context.Context) (bool, int, error) {
+	s.collectReady(ctx)
+	body, err := s.get(ctx, "/server_info")
+	if err != nil {
+		return false, 0, err
+	}
+	var server struct {
+		Epoch int `json:"hot_restart_epoch"`
+	}
+	if err := json.Unmarshal(body, &server); err != nil {
+		return false, 0, err
+	}
+	s.mu.Lock()
+	ready := s.current.Ready
+	s.mu.Unlock()
+	return ready, server.Epoch, nil
+}
+
 // VersionStatus returns the current version confirmation state.
 func (s *Service) VersionStatus(context.Context) VersionStatus {
 	s.mu.Lock()

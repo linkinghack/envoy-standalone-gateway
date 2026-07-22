@@ -16,9 +16,6 @@ func RunServe(ctx context.Context, cfg *config.Config, configDir string, log *sl
 	if cfg == nil {
 		return fmt.Errorf("core: nil config")
 	}
-	if cfg.Deliver.Mode == config.ModeStatic {
-		return fmt.Errorf("core: deliver.mode=static: static 运行时下发未实现（S7）；纯导出路径请用 esgw compile --mode static")
-	}
 	expected := filepath.Join(cfg.DataDir, "config.d")
 	if filepath.Clean(configDir) != filepath.Clean(expected) {
 		return fmt.Errorf("core: config directory %s must equal dataDir source %s", configDir, expected)

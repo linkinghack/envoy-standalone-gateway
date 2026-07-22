@@ -6,8 +6,12 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/linkinghack/envoy-standalone-gateway/internal/config"
 )
 
 const appDraft = `apiVersion: esgw/v1alpha1
@@ -68,6 +72,62 @@ func TestAppHTTPConfigurationPublishFlow(t *testing.T) {
 	response = appRequest(t, app.Handler(), http.MethodGet, "/api/v1/config/status", nil, cookie)
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"published"`) || !strings.Contains(response.Body.String(), `"awaiting_confirm"`) {
 		t.Fatalf("status = %d %s", response.Code, response.Body.String())
+	}
+}
+
+func TestAppCompositionMatrix(t *testing.T) {
+	envoyPath := filepath.Join(t.TempDir(), "envoy")
+	if err := os.WriteFile(envoyPath, []byte("#!/bin/sh\necho 'envoy version: build/1.39.0/Clean'\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ESGW_ENVOY_PATH", envoyPath)
+	for _, tc := range []struct {
+		name    string
+		mode    string
+		managed bool
+	}{
+		{name: "xds file-only", mode: config.ModeXDS},
+		{name: "xds managed", mode: config.ModeXDS, managed: true},
+		{name: "static file-only", mode: config.ModeStatic},
+		{name: "static managed", mode: config.ModeStatic, managed: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := testConfig("127.0.0.1:18000")
+			cfg.DataDir = t.TempDir()
+			cfg.Deliver.Mode = tc.mode
+			cfg.Deliver.XDS.NodeCluster = config.DefaultNodeCluster
+			cfg.Deliver.XDS.AdminAddress = "unix:///tmp/esgw-matrix-admin.sock"
+			cfg.Deliver.Static.OutputPath = filepath.Join(cfg.DataDir, "envoy", "envoy.yaml")
+			cfg.Proc.Enabled = tc.managed
+			configDir := filepath.Join(cfg.DataDir, "config.d")
+			if err := os.MkdirAll(configDir, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(configDir, "gateway.yaml"), []byte(appDraft), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			app, err := NewApp(cfg, nil, discardLog())
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = app.Close() })
+			if (app.xds != nil) != (tc.mode == config.ModeXDS) || (app.static != nil) != (tc.mode == config.ModeStatic) {
+				t.Fatalf("mode composition xds=%v static=%v", app.xds != nil, app.static != nil)
+			}
+			if (app.supervisor != nil) != tc.managed {
+				t.Fatalf("managed composition supervisor=%v", app.supervisor != nil)
+			}
+			if tc.managed && tc.mode == config.ModeXDS {
+				if _, err := os.Stat(filepath.Join(cfg.DataDir, "envoy", "bootstrap.yaml")); err != nil {
+					t.Fatalf("managed xDS bootstrap: %v", err)
+				}
+			}
+			if tc.mode == config.ModeStatic {
+				if _, err := os.Stat(cfg.Deliver.Static.OutputPath); err != nil {
+					t.Fatalf("static artifact: %v", err)
+				}
+			}
+		})
 	}
 }
 

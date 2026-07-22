@@ -20,13 +20,14 @@ import (
 // Publisher coordinates the minimum publish path across M-CONF, M-COMPILE,
 // M-STORE and M-DELIVER.
 type Publisher struct {
-	DataDir     string
-	Store       *store.Store
-	Deliver     deliver.Deliverer
-	Mode        compile.Mode
-	mu          sync.Mutex
-	state       *state.Service
-	stateCancel func()
+	DataDir        string
+	Store          *store.Store
+	Deliver        deliver.Deliverer
+	Mode           compile.Mode
+	ConfirmTimeout time.Duration
+	mu             sync.Mutex
+	state          *state.Service
+	stateCancel    func()
 }
 
 // AttachState wires M-STATE confirmation events into the publish state machine.
@@ -255,7 +256,11 @@ func (p *Publisher) PublishWithBase(ctx context.Context, author, message, baseHa
 		return PublishResult{}, err
 	}
 	if p.state != nil {
-		p.state.ExpectVersion(out.Version, 30*time.Second)
+		timeout := p.ConfirmTimeout
+		if timeout <= 0 {
+			timeout = 30 * time.Second
+		}
+		p.state.ExpectVersion(out.Version, timeout)
 	}
 	return PublishResult{Seq: seq, RunID: run.ID, IRVersion: out.Version, State: "confirming", IR: out}, nil
 }

@@ -12,15 +12,9 @@ import (
 	"time"
 )
 
-// Observation is the M-STATE view used for adoption and epoch readiness.
-type Observation struct {
-	Ready bool
-	Epoch int
-}
-
 // Probe is deliberately read-only; M-PROC never calls Envoy admin directly.
 type Probe interface {
-	ObserveProcess(context.Context) (Observation, error)
+	ObserveProcess(context.Context) (ready bool, epoch int, err error)
 }
 
 // SupervisorConfig contains lifecycle policy after strict config validation.
@@ -184,8 +178,8 @@ func (s *Supervisor) waitForEpoch(ctx context.Context, epoch int, done <-chan Ex
 	ticker := time.NewTicker(s.config.PollInterval)
 	defer ticker.Stop()
 	for {
-		observation, err := s.probe.ObserveProcess(ctx)
-		if err == nil && observation.Ready && observation.Epoch == epoch {
+		ready, observedEpoch, err := s.probe.ObserveProcess(ctx)
+		if err == nil && ready && observedEpoch == epoch {
 			return nil
 		}
 		select {

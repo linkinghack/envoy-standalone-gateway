@@ -53,8 +53,8 @@ func TestServeInvalidLogLevel(t *testing.T) {
 	}
 }
 
-// TestServeStaticMode 覆盖 SD2：deliver.mode=static → 明确报
-// 「static 运行时下发未实现（S7）」exit 1。
+// TestServeStaticMode reaches the shared core path; static is no longer
+// rejected as unimplemented (the mismatched compatibility -f still fails).
 func TestServeStaticMode(t *testing.T) {
 	cfg := filepath.Join(t.TempDir(), "esgw.yaml")
 	if err := os.WriteFile(cfg, []byte("deliver: {mode: static}\n"), 0o600); err != nil {
@@ -64,8 +64,8 @@ func TestServeStaticMode(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("exit = %d, want 1; stderr:\n%s", code, stderr)
 	}
-	if !strings.Contains(stderr, "static 运行时下发未实现（S7）") {
-		t.Fatalf("missing static-mode error:\n%s", stderr)
+	if !strings.Contains(stderr, "must equal dataDir source") || strings.Contains(stderr, "未实现（S7）") {
+		t.Fatalf("static mode did not reach shared core validation:\n%s", stderr)
 	}
 }
 

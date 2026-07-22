@@ -42,14 +42,31 @@ func testConfig(listen string) *config.Config {
 	}
 }
 
-// TestRunServeStaticMode 覆盖 SD2：deliver.mode=static → 明确报
-// 「static 运行时下发未实现（S7）」。
-func TestRunServeStaticMode(t *testing.T) {
+// TestNewAppStaticMode covers the file-only static composition without opening
+// ADS or granting process-management authority.
+func TestNewAppStaticMode(t *testing.T) {
 	cfg := testConfig("127.0.0.1:0")
+	cfg.DataDir = t.TempDir()
 	cfg.Deliver.Mode = config.ModeStatic
-	err := RunServe(context.Background(), cfg, "testdata", discardLog())
-	if err == nil || !strings.Contains(err.Error(), "static 运行时下发未实现（S7）") {
-		t.Fatalf("RunServe err = %v, want static 未实现（S7）", err)
+	cfg.Deliver.XDS.AdminAddress = "unix:///tmp/esgw-static-test-admin.sock"
+	cfg.Deliver.Static.OutputPath = filepath.Join(cfg.DataDir, "envoy", "envoy.yaml")
+	configDir := filepath.Join(cfg.DataDir, "config.d")
+	if err := os.MkdirAll(configDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, "gateway.yaml"), []byte(appDraft), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	app, err := NewApp(cfg, nil, discardLog())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = app.Close() })
+	if app.xds != nil || app.static == nil || app.supervisor != nil {
+		t.Fatalf("static composition = xds:%v static:%v supervisor:%v", app.xds, app.static, app.supervisor)
+	}
+	if _, err := os.Stat(cfg.Deliver.Static.OutputPath); err != nil {
+		t.Fatalf("static artifact: %v", err)
 	}
 }
 

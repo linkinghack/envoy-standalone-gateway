@@ -25,11 +25,11 @@ func defaultConfig() *Config {
 			Static: StaticConfig{OutputPath: filepath.Join(DefaultDataDir, "envoy", "envoy.yaml")},
 		},
 		Proc: ProcConfig{
-			LiveTimeout: protocol.Duration{Duration: DefaultLiveTimeout}, DrainTime: protocol.Duration{Duration: DefaultDrainTime},
-			ParentShutdownTime: protocol.Duration{Duration: DefaultParentShutdown}, AdoptPolicy: DefaultAdoptPolicy,
+			LiveTimeout: protocol.Duration{Duration: defaultLiveTimeout}, DrainTime: protocol.Duration{Duration: defaultDrainTime},
+			ParentShutdownTime: protocol.Duration{Duration: defaultParentShutdown}, AdoptPolicy: DefaultAdoptPolicy,
 			RestartBackoff: RestartBackoffConfig{
-				Initial: protocol.Duration{Duration: DefaultBackoffInitial}, Max: protocol.Duration{Duration: DefaultBackoffMax},
-				ResetAfter: protocol.Duration{Duration: DefaultBackoffResetAfter}, GiveUpPer10m: DefaultGiveUpPer10m,
+				Initial: protocol.Duration{Duration: defaultBackoffInitial}, Max: protocol.Duration{Duration: defaultBackoffMax},
+				ResetAfter: protocol.Duration{Duration: defaultBackoffResetAfter}, GiveUpPer10m: defaultGiveUpPer10m,
 			},
 		},
 		API: APIConfig{Listen: DefaultAPIListen, Topology: DefaultTopology},
@@ -255,6 +255,11 @@ deliver:
 			name:    "static output 必须为绝对路径",
 			content: "deliver:\n  static:\n    outputPath: relative/envoy.yaml\n",
 			wantErr: "must be absolute",
+		},
+		{
+			name:    "static runtime admin 必须为 UDS",
+			content: "deliver:\n  mode: static\n  xds:\n    adminAddress: 127.0.0.1:9901\n",
+			wantErr: "requires deliver.xds.adminAddress",
 		},
 		{
 			name:    "parent shutdown 安全下限",

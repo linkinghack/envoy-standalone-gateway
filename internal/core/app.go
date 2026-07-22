@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -21,8 +22,11 @@ import (
 	"github.com/linkinghack/envoy-standalone-gateway/internal/conf"
 	"github.com/linkinghack/envoy-standalone-gateway/internal/config"
 	"github.com/linkinghack/envoy-standalone-gateway/internal/console"
+	"github.com/linkinghack/envoy-standalone-gateway/internal/deliver"
+	staticdeliver "github.com/linkinghack/envoy-standalone-gateway/internal/deliver/static"
 	"github.com/linkinghack/envoy-standalone-gateway/internal/deliver/xds"
 	"github.com/linkinghack/envoy-standalone-gateway/internal/ir"
+	"github.com/linkinghack/envoy-standalone-gateway/internal/proc"
 	"github.com/linkinghack/envoy-standalone-gateway/internal/state"
 	"github.com/linkinghack/envoy-standalone-gateway/internal/store"
 )
@@ -30,13 +34,16 @@ import (
 // App is the only production composition root. It owns module construction,
 // listener lifecycle and reverse-order shutdown.
 type App struct {
-	config    *config.Config
-	log       *slog.Logger
-	store     *store.Store
-	deliver   *xds.Server
-	state     *state.Service
-	publisher *conf.Publisher
-	api       *api.Server
+	config     *config.Config
+	log        *slog.Logger
+	store      *store.Store
+	deliver    deliver.Deliverer
+	xds        *xds.Server
+	static     *staticdeliver.Server
+	supervisor *proc.Supervisor
+	state      *state.Service
+	publisher  *conf.Publisher
+	api        *api.Server
 
 	ready       atomic.Bool
 	closeOnce   sync.Once
@@ -49,9 +56,6 @@ type App struct {
 func NewApp(cfg *config.Config, assets fs.FS, log *slog.Logger) (*App, error) {
 	if cfg == nil {
 		return nil, errors.New("core: nil config")
-	}
-	if cfg.Deliver.Mode == config.ModeStatic {
-		return nil, fmt.Errorf("core: deliver.mode=static: static 运行时下发未实现（S7）；纯导出路径请用 esgw compile --mode static")
 	}
 	if log == nil {
 		log = slog.Default()
@@ -71,13 +75,27 @@ func NewApp(cfg *config.Config, assets fs.FS, log *slog.Logger) (*App, error) {
 		return nil, cause
 	}
 
-	output, err := loadInitialIR(cfg.DataDir)
+	mode := compile.Mode(cfg.Deliver.Mode)
+	output, err := loadInitialIR(cfg.DataDir, mode)
 	if err != nil {
 		return fail(err)
 	}
-	deliverer := xds.NewServer(cfg.Deliver.XDS.NodeID, log)
+	stateService := state.New(cfg.Deliver.XDS.NodeID, &state.HTTPClient{Address: cfg.Deliver.XDS.AdminAddress})
+	var deliverer deliver.Deliverer
+	var xdsServer *xds.Server
+	var staticServer *staticdeliver.Server
+	if cfg.Deliver.Mode == config.ModeStatic {
+		staticServer = staticdeliver.NewServer(
+			staticdeliver.Writer{OutputPath: cfg.Deliver.Static.OutputPath},
+			staticdeliver.RenderOptions{AdminSocketPath: staticAdminSocket(cfg.Deliver.XDS.AdminAddress)}, nil, log,
+		)
+		deliverer = staticServer
+	} else {
+		xdsServer = xds.NewServer(cfg.Deliver.XDS.NodeID, log)
+		deliverer = xdsServer
+	}
 	if err := deliverer.Apply(context.Background(), output); err != nil {
-		return fail(fmt.Errorf("core: apply initial snapshot: %w", err))
+		return fail(fmt.Errorf("core: apply initial delivery: %w", err))
 	}
 
 	authService, err := auth.New(durable, auth.Config{StartedAt: time.Now()})
@@ -96,8 +114,10 @@ func NewApp(cfg *config.Config, assets fs.FS, log *slog.Logger) (*App, error) {
 		}
 	}
 
-	stateService := state.New(cfg.Deliver.XDS.NodeID, &state.HTTPClient{Address: cfg.Deliver.XDS.AdminAddress})
-	publisher := &conf.Publisher{DataDir: cfg.DataDir, Store: durable, Deliver: deliverer, Mode: compile.ModeXDS}
+	publisher := &conf.Publisher{DataDir: cfg.DataDir, Store: durable, Deliver: deliverer, Mode: mode}
+	if cfg.Deliver.Mode == config.ModeStatic && !cfg.Proc.Enabled {
+		publisher.ConfirmTimeout = 10 * time.Minute
+	}
 	detachState := publisher.AttachState(stateService)
 	certificateService := &certstore.Service{DataDir: cfg.DataDir, Store: durable}
 
@@ -113,8 +133,19 @@ func NewApp(cfg *config.Config, assets fs.FS, log *slog.Logger) (*App, error) {
 		return fail(fmt.Errorf("core: compose API handlers: %w", err))
 	}
 	app := &App{
-		config: cfg, log: log, store: durable, deliver: deliverer, state: stateService,
+		config: cfg, log: log, store: durable, deliver: deliverer, xds: xdsServer, static: staticServer, state: stateService,
 		publisher: publisher, detachState: detachState,
+	}
+	if cfg.Proc.Enabled {
+		supervisor, supervisorErr := buildSupervisor(cfg, stateService, log)
+		if supervisorErr != nil {
+			detachState()
+			return fail(supervisorErr)
+		}
+		app.supervisor = supervisor
+		if staticServer != nil {
+			staticServer.SetRestarter(supervisor)
+		}
 	}
 	apiServer, err := api.NewServer(api.Config{
 		Auth: authService, Handlers: handlers, Assets: assets,
@@ -145,13 +176,19 @@ func (a *App) Run(ctx context.Context) error {
 	defer cancel()
 	defer func() { _ = a.Close() }()
 
-	xdsListener, err := net.Listen("tcp", a.config.Deliver.XDS.Listen)
-	if err != nil {
-		return fmt.Errorf("core: listen xDS %s: %w", a.config.Deliver.XDS.Listen, err)
+	var xdsListener net.Listener
+	var err error
+	if a.xds != nil {
+		xdsListener, err = net.Listen("tcp", a.config.Deliver.XDS.Listen)
+		if err != nil {
+			return fmt.Errorf("core: listen xDS %s: %w", a.config.Deliver.XDS.Listen, err)
+		}
 	}
 	apiListener, err := net.Listen("tcp", a.config.API.Listen)
 	if err != nil {
-		_ = xdsListener.Close()
+		if xdsListener != nil {
+			_ = xdsListener.Close()
+		}
 		return fmt.Errorf("core: listen API %s: %w", a.config.API.Listen, err)
 	}
 
@@ -171,8 +208,12 @@ func (a *App) Run(ctx context.Context) error {
 		name string
 		err  error
 	}
+	serverCount := 1
 	results := make(chan serveResult, 2)
-	go func() { results <- serveResult{name: "xDS", err: a.deliver.Serve(runCtx, xdsListener)} }()
+	if a.xds != nil {
+		serverCount++
+		go func() { results <- serveResult{name: "xDS", err: a.xds.Serve(runCtx, xdsListener)} }()
+	}
 	go func() {
 		err := httpServer.Serve(apiListener)
 		if errors.Is(err, http.ErrServerClosed) {
@@ -180,17 +221,30 @@ func (a *App) Run(ctx context.Context) error {
 		}
 		results <- serveResult{name: "API", err: err}
 	}()
-	a.ready.Store(true)
-	a.log.Info("esgw app listening", "xds", xdsListener.Addr().String(), "api", apiListener.Addr().String())
 
 	var firstErr error
 	received := 0
-	select {
-	case <-ctx.Done():
-	case result := <-results:
-		received = 1
-		if result.err != nil {
-			firstErr = fmt.Errorf("core: %s server: %w", result.name, result.err)
+	if a.supervisor != nil {
+		if err := a.supervisor.Start(runCtx); err != nil {
+			firstErr = fmt.Errorf("core: start managed Envoy: %w", err)
+		}
+	}
+	if firstErr == nil && (a.supervisor == nil || a.supervisor.Status().State == "running") {
+		a.ready.Store(true)
+	}
+	if xdsListener != nil {
+		a.log.Info("esgw app listening", "mode", a.config.Deliver.Mode, "xds", xdsListener.Addr().String(), "api", apiListener.Addr().String())
+	} else {
+		a.log.Info("esgw app listening", "mode", a.config.Deliver.Mode, "api", apiListener.Addr().String())
+	}
+	if firstErr == nil {
+		select {
+		case <-ctx.Done():
+		case result := <-results:
+			received = 1
+			if result.err != nil {
+				firstErr = fmt.Errorf("core: %s server: %w", result.name, result.err)
+			}
 		}
 	}
 	a.ready.Store(false)
@@ -198,10 +252,12 @@ func (a *App) Run(ctx context.Context) error {
 	_ = httpServer.Shutdown(shutdownCtx)
 	shutdownCancel()
 	cancel()
-	_ = xdsListener.Close()
+	if xdsListener != nil {
+		_ = xdsListener.Close()
+	}
 
-	// Both serve goroutines must exit before Store and subscriptions are closed.
-	for ; received < 2; received++ {
+	// All serve goroutines must exit before Store and subscriptions are closed.
+	for ; received < serverCount; received++ {
 		select {
 		case result := <-results:
 			if firstErr == nil && result.err != nil && !errors.Is(result.err, net.ErrClosed) {
@@ -224,6 +280,9 @@ func (a *App) Close() error {
 	}
 	a.closeOnce.Do(func() {
 		a.ready.Store(false)
+		if a.supervisor != nil {
+			a.supervisor.Close()
+		}
 		if a.detachState != nil {
 			a.detachState()
 		}
@@ -234,7 +293,7 @@ func (a *App) Close() error {
 	return a.closeErr
 }
 
-func loadInitialIR(dataDir string) (*ir.IR, error) {
+func loadInitialIR(dataDir string, mode compile.Mode) (*ir.IR, error) {
 	draft, loadErrs, err := conf.LoadDraft(dataDir)
 	if err != nil {
 		return nil, fmt.Errorf("core: load draft: %w", err)
@@ -250,7 +309,7 @@ func loadInitialIR(dataDir string) (*ir.IR, error) {
 		return output, nil
 	}
 	output, compileErrs := compile.Compile(draft.Config, compile.Options{
-		Mode: compile.ModeXDS, ManagedCertificateDir: filepath.Join(dataDir, "certs"),
+		Mode: mode, ManagedCertificateDir: filepath.Join(dataDir, "certs"),
 	})
 	for _, compileErr := range compileErrs {
 		if compileErr.Severity == compile.SeverityError {
@@ -261,6 +320,48 @@ func loadInitialIR(dataDir string) (*ir.IR, error) {
 		return nil, errors.New("core: compile draft returned no IR")
 	}
 	return output, nil
+}
+
+func buildSupervisor(cfg *config.Config, probe proc.Probe, log *slog.Logger) (*proc.Supervisor, error) {
+	binary, err := proc.Discover(context.Background(), cfg.Proc.EnvoyPath, proc.DefaultVersionTimeout)
+	if err != nil {
+		return nil, fmt.Errorf("core: discover managed Envoy: %w", err)
+	}
+	if binary.Warning != "" {
+		log.Warn("managed Envoy is outside the tested compatibility window", "warning", binary.Warning)
+	}
+	configPath := cfg.Deliver.Static.OutputPath
+	if cfg.Deliver.Mode == config.ModeXDS {
+		configPath = filepath.Join(cfg.DataDir, "envoy", "bootstrap.yaml")
+		payload, renderErr := xds.RenderBootstrap(xds.BootstrapOpts{
+			NodeID: cfg.Deliver.XDS.NodeID, NodeCluster: cfg.Deliver.XDS.NodeCluster,
+			XDSListen: cfg.Deliver.XDS.Listen, AdminAddress: cfg.Deliver.XDS.AdminAddress,
+		})
+		if renderErr != nil {
+			return nil, fmt.Errorf("core: render managed xDS bootstrap: %w", renderErr)
+		}
+		if writeErr := (staticdeliver.Writer{OutputPath: configPath}).Write(payload); writeErr != nil {
+			return nil, fmt.Errorf("core: write managed xDS bootstrap: %w", writeErr)
+		}
+	}
+	backoff := cfg.Proc.RestartBackoff
+	return proc.NewSupervisor(proc.SupervisorConfig{
+		Binary: binary, ConfigPath: configPath, RecordPath: filepath.Join(cfg.DataDir, "run", "proc.json"),
+		BaseID: cfg.Proc.BaseID, LiveTimeout: cfg.Proc.LiveTimeout.Duration,
+		DrainTime: cfg.Proc.DrainTime.Duration, ParentShutdownTime: cfg.Proc.ParentShutdownTime.Duration,
+		AdoptPolicy: cfg.Proc.AdoptPolicy,
+		Backoff: &proc.Backoff{
+			Initial: backoff.Initial.Duration, Max: backoff.Max.Duration,
+			ResetAfter: backoff.ResetAfter.Duration, GiveUp: backoff.GiveUpPer10m,
+		},
+	}, proc.OSRunner{}, probe, log)
+}
+
+func staticAdminSocket(address string) string {
+	if path, ok := strings.CutPrefix(address, "unix://"); ok && path != "" {
+		return path
+	}
+	return staticdeliver.DefaultAdminSocketPath
 }
 
 func isLoopbackListener(address net.Addr) bool {
