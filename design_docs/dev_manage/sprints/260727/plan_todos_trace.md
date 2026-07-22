@@ -5,7 +5,7 @@
 | T1 | L4 语义、TCP/TLS/UDP Builder 与 golden | 已完成 | unit + 3-version validate |
 | T2 | extAuth HTTP/gRPC 编译与冲突模型 | 已完成 | unit + auth service traffic |
 | T3 | IPAccess 与动态 key 本地限流 | 已完成 | policy unit + isolated quota e2e |
-| T4 | downstream mTLS、熔断与协议校验收紧 | 待开始 | TLS/circuit tests + traffic |
+| T4 | downstream mTLS、熔断与协议校验收紧 | 已完成 | TLS/circuit tests + traffic |
 | T5 | schema/spec/examples 独立发行与 conformance | 待开始 | clean-diff + external runner |
 | T6 | static/xDS 真实矩阵、文档与 Sprint 收口 | 待开始 | full gates + A1–A8 |
 
@@ -17,6 +17,7 @@
 | 2026-07-23 | T1 完成 TCP/TLS passthrough/UDP Envoy Builder、L4 路由/Policy/TLS 终止冲突诊断与 F6 typed filter cluster 引用闭合；纠正旧协议中 TLS passthrough 强制终止证书的矛盾。 |
 | 2026-07-23 | T2 完成 HTTP/gRPC extAuth、Listener provider 冲突模型、route disable、HTTPS 显式信任和自动 auth cluster；真实验证 allow/deny/fail-open/fail-closed。 |
 | 2026-07-23 | T3 完成 IPAccess 与动态 key 本地限流：修复旧实现默认 0%/共享桶降级，加入 wildcard descriptor、动态桶 LRU 上限和安全来源地址边界；三个 Envoy 版本真实验证 IP/header 独立配额与 XFF 不可伪造。 |
+| 2026-07-23 | T4 完成 downstream mTLS 与熔断：client CA static 文件/xDS SDS 双形态、ClientAuth 强制验证、熔断合法范围和 DEFAULT priority；三版本真实验证证书拒绝/通过及并发 503 overflow。 |
 
 ## 验收核验
 
@@ -26,7 +27,7 @@
 | A2 L4 真实流量 | 已核验 | `e2e/l4/run.sh`：TCP、双 SNI TLS passthrough、未知 SNI 拒绝、UDP echo |
 | A3 extAuth | 已核验 | `testdata/extauth` static/xDS + 三版本 validate；`e2e/extauth/run.sh` HTTP/gRPC 真实流量 |
 | A4 IPAccess/限流 key | 已核验 | `testdata/ipaccess` static/xDS；`e2e/policy/run.sh` 三版本 allow/deny/XFF 边界与 clientIP/header 独立桶 |
-| A5 downstream mTLS/熔断 | 待核验 | — |
+| A5 downstream mTLS/熔断 | 已核验 | `testdata/mtls-circuit` static/xDS；`e2e/mtls-circuit/run.sh` 三版本证书验证与真实 503 overflow |
 | A6 协议发行/conformance | 待核验 | — |
 | A7 三版本/static/xDS | 待核验 | — |
 | A8 全量门禁 | 待核验 | — |

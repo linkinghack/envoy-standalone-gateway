@@ -28,6 +28,9 @@ allow/deny、route disable、HTTP fail-open 与 gRPC fail-closed。
 IP 访问控制与本地限流见 [`policy/`](policy/)（`make e2e-policy`）：在全部支持的
 Envoy 版本上覆盖 allow/deny、不可伪造的来源边界以及 clientIP/header 独立动态桶。
 
+下游 mTLS 与熔断见 [`mtls-circuit/`](mtls-circuit/)（`make e2e-mtls-circuit`）：
+三版本覆盖缺失/不可信/可信客户端证书和并发请求触发真实 503 overflow。
+
 默认 `go test ./...` 不触发（工程基线 §3：e2e 依赖 docker）。
 
 ## 关键决策
