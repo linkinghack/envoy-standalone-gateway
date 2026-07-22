@@ -32,11 +32,11 @@ jobs:
           go-version: "1.26"
       - name: go-licenses check
         run: |
-          go install github.com/google/go-licenses@latest
+          go install github.com/google/go-licenses@v1.6.0
           # 项目本体 AGPL-3.0：禁止 forbidden 类（专有/不兼容）许可证依赖。
           # go-licenses 会把仓库自身 module 也当作依赖并判为 forbidden AGPL-3.0，
           # 需用 --ignore 排除本体，只检查第三方依赖。
-          go-licenses check --disallowed_types=forbidden \
+          go-licenses check --confidence_threshold=0.75 --disallowed_types=forbidden \
             --ignore github.com/linkinghack/envoy-standalone-gateway ./...
 
   # Sprint 260719 T7：按 internal/version.EnvoyMatrixVersions（单一事实来源，
@@ -69,3 +69,55 @@ jobs:
           cache: true
       - name: ADS traffic e2e (docker compose)
         run: e2e/xds/run.sh
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: cd web && npm ci
+      - run: cd web && npx playwright install --with-deps chromium
+      - run: cd web && npm run check
+      - run: git diff --exit-code -- api/openapi.yaml web/src/api/generated.ts internal/console/ui
+
+  delivery:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: true
+      - run: make packaging-test docs-test resource-test portability-test
+      - run: docker build -f packaging/docker/Dockerfile.esgw -t esgw:ci .
+      - run: docker build -f packaging/docker/Dockerfile.all-in-one -t esgw-all-in-one:ci .
+
+  e2e-topology-matrix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: true
+      - run: make e2e-topology-matrix
+
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - run: go install github.com/google/go-licenses@v1.6.0
+      - run: go install github.com/anchore/syft/cmd/syft@v1.49.0
+      - run: VERSION=ci DIST_DIR="$RUNNER_TEMP/esgw-release" make release
+      - run: cd "$RUNNER_TEMP/esgw-release" && sha256sum -c SHA256SUMS

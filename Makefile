@@ -81,6 +81,18 @@ image-smoke: ## 两类 OCI 镜像的非 root/健康检查 smoke
 docs-test: ## 用户文档链接、示例配置与 compose 检查
 	scripts/docs-test.sh
 
+.PHONY: resource-test
+resource-test: ## 管理面空载 RSS < 150 MiB 基线
+	scripts/measure-resources.sh
+
+.PHONY: portability-test
+portability-test: ## Linux/macOS amd64/arm64 交叉构建
+	scripts/portability-test.sh
+
+.PHONY: release
+release: ## 双架构归档、许可证、SPDX SBOM 与 SHA256
+	packaging/release/build.sh
+
 .PHONY: tidy
 tidy:
 	go mod tidy
