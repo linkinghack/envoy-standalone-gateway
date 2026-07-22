@@ -84,11 +84,13 @@ type UpstreamTLS struct {
 
 // UpstreamConnection 是上游连接配置。
 type UpstreamConnection struct {
-	ConnectTimeout     *Duration `json:"connectTimeout,omitempty"` // 默认 5s
-	HTTP2              bool      `json:"http2,omitempty"`          // 对上游使用 h2（gRPC 后端置 true）
-	MaxConnections     *int32    `json:"maxConnections,omitempty"` // 熔断参数（P1，映射 circuit_breakers）
-	MaxPendingRequests *int32    `json:"maxPendingRequests,omitempty"`
+	ConnectTimeout     *Duration `json:"connectTimeout,omitempty"`                                           // 默认 5s
+	HTTP2              bool      `json:"http2,omitempty"`                                                    // 对上游使用 h2（gRPC 后端置 true）
+	MaxConnections     *int32    `json:"maxConnections,omitempty" jsonschema:"minimum=1,maximum=2147483647"` // 熔断参数（P1，映射 circuit_breakers）
+	MaxPendingRequests *int32    `json:"maxPendingRequests,omitempty" jsonschema:"minimum=1,maximum=2147483647"`
 }
+
+const upstreamCircuitBreakerMax int32 = 2_147_483_647
 
 func (s *UpstreamSpec) validate() error {
 	sources := 0
@@ -148,6 +150,19 @@ func (s *UpstreamSpec) validate() error {
 		}
 		if probes != 1 {
 			return fmt.Errorf("spec.healthCheck: exactly one of http | tcp is required, got %d", probes)
+		}
+	}
+	if c := s.Connection; c != nil {
+		for _, item := range []struct {
+			name  string
+			value *int32
+		}{
+			{name: "maxConnections", value: c.MaxConnections},
+			{name: "maxPendingRequests", value: c.MaxPendingRequests},
+		} {
+			if item.value != nil && (*item.value < 1 || *item.value > upstreamCircuitBreakerMax) {
+				return fmt.Errorf("spec.connection.%s: must be between 1 and %d", item.name, upstreamCircuitBreakerMax)
+			}
 		}
 	}
 	return validateEnvoyPatches("spec.envoyPatch", s.EnvoyPatch)

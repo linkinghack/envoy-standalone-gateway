@@ -221,7 +221,7 @@ spec:
   endpoints: [{address: 10.0.0.1, port: 8080, weight: 2}]
   loadBalancer: {policy: ringHash, hashOn: [{header: x-user-id}]}
   tls: {enabled: true, sni: svc.internal, insecureSkipVerify: false}
-  connection: {connectTimeout: 3s, http2: true, maxConnections: 100}
+  connection: {connectTimeout: 3s, http2: true, maxConnections: 2147483647, maxPendingRequests: 1}
 `)
 	expectLoadOK(t, `
 apiVersion: esgw/v1alpha1
@@ -284,6 +284,30 @@ metadata: {name: u}
 spec:
   endpoints: [{address: 10.0.0.1, port: 0}]
 `, `invalid port`},
+		{"zero max connections", `
+apiVersion: esgw/v1alpha1
+kind: Upstream
+metadata: {name: u}
+spec:
+  endpoints: [{address: 10.0.0.1, port: 80}]
+  connection: {maxConnections: 0}
+`, `spec.connection.maxConnections: must be between 1 and 2147483647`},
+		{"negative max pending requests", `
+apiVersion: esgw/v1alpha1
+kind: Upstream
+metadata: {name: u}
+spec:
+  endpoints: [{address: 10.0.0.1, port: 80}]
+  connection: {maxPendingRequests: -1}
+`, `spec.connection.maxPendingRequests: must be between 1 and 2147483647`},
+		{"max connections integer overflow", `
+apiVersion: esgw/v1alpha1
+kind: Upstream
+metadata: {name: u}
+spec:
+  endpoints: [{address: 10.0.0.1, port: 80}]
+  connection: {maxConnections: 2147483648}
+`, `cannot unmarshal number 2147483648`},
 	}
 	for _, tc := range bad {
 		t.Run(tc.name, func(t *testing.T) { expectLoadErr(t, tc.doc, tc.substr) })
