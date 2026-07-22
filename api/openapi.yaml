@@ -1,0 +1,796 @@
+openapi: 3.0.3
+info:
+  title: Envoy Standalone Gateway Management API
+  version: 0.1.0
+  description: |
+    Management contract for the standalone gateway. Configuration mutations
+    operate on the filesystem draft; published versions are immutable.
+servers:
+  - url: /api/v1
+security:
+  - sessionCookie: []
+tags:
+  - name: auth
+  - name: config
+  - name: status
+  - name: stats
+  - name: certs
+  - name: system
+paths:
+  /auth/bootstrap:
+    get:
+      operationId: getAuthBootstrap
+      tags: [auth]
+      security: []
+      responses:
+        '200':
+          description: Bootstrap state
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/BootstrapState'}
+    post:
+      operationId: createAuthBootstrap
+      tags: [auth]
+      security: []
+      parameters:
+        - {$ref: '#/components/parameters/CsrfHeader'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/Credentials'}
+      responses:
+        '201': {$ref: '#/components/responses/Session'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      security: []
+      parameters:
+        - {$ref: '#/components/parameters/CsrfHeader'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/Credentials'}
+      responses:
+        '200': {$ref: '#/components/responses/Session'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      parameters:
+        - {$ref: '#/components/parameters/CsrfHeader'}
+      responses:
+        '204': {description: Session destroyed}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+  /auth/session:
+    get:
+      operationId: getAuthSession
+      tags: [auth]
+      responses:
+        '200': {$ref: '#/components/responses/Session'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+  /auth/password:
+    post:
+      operationId: changePassword
+      tags: [auth]
+      parameters:
+        - {$ref: '#/components/parameters/CsrfHeader'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [oldPassword, newPassword]
+              properties:
+                oldPassword: {type: string, format: password}
+                newPassword: {type: string, format: password, minLength: 12}
+      responses:
+        '204': {description: Password changed and other sessions revoked}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+  /auth/methods:
+    get:
+      operationId: listAuthMethods
+      tags: [auth]
+      security: []
+      responses:
+        '200':
+          description: Available authentication methods
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [type]
+                      properties:
+                        type: {type: string, enum: [local]}
+  /config/draft:
+    get:
+      operationId: getConfigDraft
+      tags: [config]
+      responses:
+        '200':
+          description: Current filesystem draft
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Draft'}
+    put:
+      operationId: replaceConfigDraft
+      tags: [config]
+      parameters:
+        - {$ref: '#/components/parameters/CsrfHeader'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ReplaceDraftRequest'}
+      responses:
+        '200': {$ref: '#/components/responses/DraftMutation'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /config/objects:
+    get:
+      operationId: listConfigObjects
+      tags: [config]
+      parameters:
+        - {$ref: '#/components/parameters/KindQuery'}
+        - {$ref: '#/components/parameters/Limit'}
+        - {$ref: '#/components/parameters/Offset'}
+      responses:
+        '200':
+          description: Draft objects
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ObjectList'}
+  /config/objects/{kind}/{name}:
+    parameters:
+      - {$ref: '#/components/parameters/KindPath'}
+      - {$ref: '#/components/parameters/NamePath'}
+    get:
+      operationId: getConfigObject
+      tags: [config]
+      responses:
+        '200':
+          description: One protocol object
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ConfigObject'}
+            application/yaml:
+              schema: {type: string}
+        '404': {$ref: '#/components/responses/NotFound'}
+    put:
+      operationId: putConfigObject
+      tags: [config]
+      parameters:
+        - {$ref: '#/components/parameters/CsrfHeader'}
+        - {$ref: '#/components/parameters/ExpectedResourceVersion'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ConfigObject'}
+          application/yaml:
+            schema: {type: string}
+      responses:
+        '200': {$ref: '#/components/responses/DraftMutation'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '409': {$ref: '#/components/responses/Conflict'}
+    delete:
+      operationId: deleteConfigObject
+      tags: [config]
+      parameters:
+        - {$ref: '#/components/parameters/CsrfHeader'}
+        - {$ref: '#/components/parameters/ExpectedResourceVersion'}
+      responses:
+        '200': {$ref: '#/components/responses/DraftMutation'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /config/schemas:
+    get:
+      operationId: getConfigSchemas
+      tags: [config]
+      responses:
+        '200':
+          description: Protocol JSON Schema bundle
+          content:
+            application/schema+json:
+              schema: {type: object, additionalProperties: true}
+  /config/validate:
+    post:
+      operationId: validateConfig
+      tags: [config]
+      parameters:
+        - {$ref: '#/components/parameters/CsrfHeader'}
+        - {$ref: '#/components/parameters/ModeQuery'}
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                envoyValidate: {type: boolean, default: false}
+      responses:
+        '200':
+          description: Validation result; invalid configuration is represented by ok=false
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ValidationResult'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+  /config/compiled:
+    get:
+      operationId: getCompiledConfig
+      tags: [config]
+      parameters:
+        - {$ref: '#/components/parameters/ModeQuery'}
+      responses:
+        '200':
+          description: Deterministic compiled artifact
+          content:
+            application/json:
+              schema: {type: object, additionalProperties: true}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+  /config/draft/diff:
+    get:
+      operationId: getDraftDiff
+      tags: [config]
+      parameters:
+        - name: against
+          in: query
+          schema: {type: string, default: current}
+        - name: format
+          in: query
+          schema: {type: string, enum: [unified, summary], default: unified}
+      responses:
+        '200':
+          description: Text or object summary diff
+          content:
+            application/json:
+              schema: {type: object, additionalProperties: true}
+  /config/publish:
+    post:
+      operationId: publishConfig
+      tags: [config]
+      parameters:
+        - {$ref: '#/components/parameters/CsrfHeader'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message]
+              properties:
+                message: {type: string, maxLength: 500}
+                expectedResourceVersion: {type: string}
+      responses:
+        '202':
+          description: Publish accepted and awaiting confirmation
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PublishResult'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+  /config/status:
+    get:
+      operationId: getConfigStatus
+      tags: [config]
+      responses:
+        '200':
+          description: Published/effective status
+          content:
+            application/json:
+              schema: {type: object, additionalProperties: true}
+  /config/versions:
+    get:
+      operationId: listConfigVersions
+      tags: [config]
+      parameters:
+        - {$ref: '#/components/parameters/Limit'}
+        - {$ref: '#/components/parameters/Offset'}
+      responses:
+        '200':
+          description: Immutable versions
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total]
+                properties:
+                  items: {type: array, items: {$ref: '#/components/schemas/Version'}}
+                  total: {type: integer, minimum: 0}
+  /config/versions/{id}:
+    parameters:
+      - {$ref: '#/components/parameters/VersionPath'}
+    get:
+      operationId: getConfigVersion
+      tags: [config]
+      responses:
+        '200':
+          description: Version metadata
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Version'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /config/versions/{id}/config:
+    parameters:
+      - {$ref: '#/components/parameters/VersionPath'}
+    get:
+      operationId: getConfigVersionSource
+      tags: [config]
+      responses:
+        '200':
+          description: Version source files
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Draft'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /config/versions/{id}/compiled:
+    parameters:
+      - {$ref: '#/components/parameters/VersionPath'}
+    get:
+      operationId: getConfigVersionCompiled
+      tags: [config]
+      parameters:
+        - {$ref: '#/components/parameters/ModeQuery'}
+        - name: format
+          in: query
+          schema: {type: string, enum: [json, static-yaml], default: json}
+      responses:
+        '200':
+          description: Compiled version artifact
+          content:
+            application/json:
+              schema: {type: object, additionalProperties: true}
+            application/yaml:
+              schema: {type: string}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /config/versions/{id}/diff:
+    parameters:
+      - {$ref: '#/components/parameters/VersionPath'}
+    get:
+      operationId: getConfigVersionDiff
+      tags: [config]
+      parameters:
+        - name: against
+          in: query
+          required: true
+          schema: {type: integer, format: int64, minimum: 1}
+      responses:
+        '200':
+          description: Version source diff
+          content:
+            application/json:
+              schema: {type: object, additionalProperties: true}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /config/versions/{id}/rollback:
+    parameters:
+      - {$ref: '#/components/parameters/VersionPath'}
+    post:
+      operationId: rollbackConfigVersion
+      tags: [config]
+      parameters:
+        - {$ref: '#/components/parameters/CsrfHeader'}
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                publish: {type: boolean, default: false}
+                force: {type: boolean, default: false}
+      responses:
+        '200': {$ref: '#/components/responses/DraftMutation'}
+        '202':
+          description: Rollback publish accepted
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PublishResult'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /status/summary:
+    get:
+      operationId: getStatusSummary
+      tags: [status]
+      responses: {'200': {$ref: '#/components/responses/StatePayload'}}
+  /status/listeners:
+    get:
+      operationId: listStatusListeners
+      tags: [status]
+      responses: {'200': {$ref: '#/components/responses/StatePayload'}}
+  /status/clusters:
+    get:
+      operationId: listStatusClusters
+      tags: [status]
+      responses: {'200': {$ref: '#/components/responses/StatePayload'}}
+  /status/clusters/{name}/endpoints:
+    get:
+      operationId: listStatusClusterEndpoints
+      tags: [status]
+      parameters:
+        - {$ref: '#/components/parameters/NamePath'}
+      responses:
+        '200': {$ref: '#/components/responses/StatePayload'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /status/routes:
+    get:
+      operationId: listStatusRoutes
+      tags: [status]
+      responses: {'200': {$ref: '#/components/responses/StatePayload'}}
+  /status/certs:
+    get:
+      operationId: listStatusCerts
+      tags: [status]
+      responses: {'200': {$ref: '#/components/responses/StatePayload'}}
+  /stats/overview:
+    get:
+      operationId: getStatsOverview
+      tags: [stats]
+      parameters:
+        - name: window
+          in: query
+          schema: {type: string, enum: [5m, 15m, 1h, 6h], default: 15m}
+      responses: {'200': {$ref: '#/components/responses/StatePayload'}}
+  /stats/series:
+    get:
+      operationId: listStatsSeries
+      tags: [stats]
+      parameters:
+        - {name: dimension, in: query, schema: {type: string, enum: [route, cluster]}}
+        - {name: name, in: query, schema: {type: string}}
+        - {name: metric, in: query, schema: {type: string}}
+        - {name: window, in: query, schema: {type: string, enum: [5m, 15m, 1h, 6h], default: 15m}}
+      responses: {'200': {$ref: '#/components/responses/StatePayload'}}
+  /certs:
+    get:
+      operationId: listCertificates
+      tags: [certs]
+      responses:
+        '200':
+          description: Managed certificate metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total]
+                properties:
+                  items: {type: array, items: {$ref: '#/components/schemas/Certificate'}}
+                  total: {type: integer}
+    post:
+      operationId: createCertificate
+      tags: [certs]
+      parameters:
+        - {$ref: '#/components/parameters/CsrfHeader'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CreateCertificateRequest'}
+      responses:
+        '201':
+          description: Managed certificate metadata; private key is never returned
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Certificate'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /certs/{name}:
+    parameters:
+      - {$ref: '#/components/parameters/NamePath'}
+    get:
+      operationId: getCertificate
+      tags: [certs]
+      responses:
+        '200':
+          description: Certificate metadata and public chain
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Certificate'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    delete:
+      operationId: deleteCertificate
+      tags: [certs]
+      parameters:
+        - {$ref: '#/components/parameters/CsrfHeader'}
+      responses:
+        '204': {description: Certificate deleted}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /system/info:
+    get:
+      operationId: getSystemInfo
+      tags: [system]
+      responses:
+        '200':
+          description: Build, topology and Envoy information
+          content:
+            application/json:
+              schema: {type: object, additionalProperties: true}
+  /envoy/stats/prometheus:
+    get:
+      operationId: getEnvoyPrometheusStats
+      tags: [stats]
+      responses:
+        '200':
+          description: Raw Envoy Prometheus exposition
+          content:
+            text/plain:
+              schema: {type: string}
+        '502': {$ref: '#/components/responses/BadGateway'}
+  /healthz:
+    get:
+      operationId: getHealth
+      tags: [system]
+      security: []
+      servers:
+        - url: /
+      responses: {'200': {$ref: '#/components/responses/Probe'}}
+  /readyz:
+    get:
+      operationId: getReady
+      tags: [system]
+      security: []
+      servers:
+        - url: /
+      responses:
+        '200': {$ref: '#/components/responses/Probe'}
+        '503': {$ref: '#/components/responses/Probe'}
+  /metrics:
+    get:
+      operationId: getManagementMetrics
+      tags: [system]
+      security: []
+      servers:
+        - url: /
+      responses:
+        '200':
+          description: esgw management-plane Prometheus exposition
+          content:
+            text/plain:
+              schema: {type: string}
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: esgw_session
+  parameters:
+    CsrfHeader:
+      name: X-ESGW-Request
+      in: header
+      required: true
+      schema: {type: string, enum: ['1']}
+    ExpectedResourceVersion:
+      name: expectedResourceVersion
+      in: query
+      schema: {type: string}
+    KindQuery:
+      name: kind
+      in: query
+      schema: {$ref: '#/components/schemas/ConfigKind'}
+    KindPath:
+      name: kind
+      in: path
+      required: true
+      schema: {$ref: '#/components/schemas/ConfigKind'}
+    NamePath:
+      name: name
+      in: path
+      required: true
+      schema: {type: string, pattern: '^[a-z0-9]([a-z0-9.-]{0,61}[a-z0-9])?$'}
+    VersionPath:
+      name: id
+      in: path
+      required: true
+      schema: {type: integer, format: int64, minimum: 1}
+    ModeQuery:
+      name: mode
+      in: query
+      schema: {type: string, enum: [xds, static], default: xds}
+    Limit:
+      name: limit
+      in: query
+      schema: {type: integer, minimum: 1, maximum: 1000, default: 100}
+    Offset:
+      name: offset
+      in: query
+      schema: {type: integer, minimum: 0, default: 0}
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum: [INVALID_ARGUMENT, UNAUTHENTICATED, FORBIDDEN, NOT_FOUND, CONFLICT, NO_CHANGES, VALIDATION_FAILED, RATE_LIMITED, INTERNAL, BAD_GATEWAY]
+            message: {type: string}
+            details:
+              type: array
+              items: {$ref: '#/components/schemas/Diagnostic'}
+    Diagnostic:
+      type: object
+      required: [stage, message, severity]
+      properties:
+        stage: {type: string}
+        source: {type: object, additionalProperties: true}
+        message: {type: string}
+        severity: {type: string, enum: [error, warning]}
+    Credentials:
+      type: object
+      required: [username, password]
+      properties:
+        username: {type: string, minLength: 1, maxLength: 64}
+        password: {type: string, format: password, minLength: 12, maxLength: 1024}
+    BootstrapState:
+      type: object
+      required: [required, expiresAt]
+      properties:
+        required: {type: boolean}
+        expiresAt: {type: string, format: date-time, nullable: true}
+    Session:
+      type: object
+      required: [user, expiresAt]
+      properties:
+        user:
+          type: object
+          required: [name, roles]
+          properties:
+            name: {type: string}
+            roles: {type: array, items: {type: string, enum: [admin]}}
+        expiresAt: {type: string, format: date-time}
+    DraftFile:
+      type: object
+      required: [path, content]
+      properties:
+        path: {type: string}
+        content: {type: string}
+    Draft:
+      type: object
+      required: [sourceType, resourceVersion, files]
+      properties:
+        sourceType: {type: string, enum: [protocol, native]}
+        resourceVersion: {type: string}
+        updatedAt: {type: string, format: date-time, nullable: true}
+        files: {type: array, items: {$ref: '#/components/schemas/DraftFile'}}
+    ReplaceDraftRequest:
+      type: object
+      required: [sourceType, files]
+      properties:
+        sourceType: {type: string, enum: [protocol, native]}
+        expectedResourceVersion: {type: string}
+        files: {type: array, items: {$ref: '#/components/schemas/DraftFile'}}
+    DraftMutation:
+      type: object
+      required: [draftResourceVersion]
+      properties:
+        draftResourceVersion: {type: string}
+        object: {$ref: '#/components/schemas/ConfigObject'}
+    ConfigKind:
+      type: string
+      enum: [Gateway, Listener, Route, Upstream, Policy, EnvoyResources]
+    ConfigObject:
+      type: object
+      required: [apiVersion, kind, metadata, spec]
+      properties:
+        apiVersion: {type: string, enum: [esgw/v1alpha1]}
+        kind: {$ref: '#/components/schemas/ConfigKind'}
+        metadata:
+          type: object
+          required: [name]
+          additionalProperties: true
+          properties:
+            name: {type: string}
+        spec: {type: object, additionalProperties: true}
+      additionalProperties: false
+    ObjectList:
+      type: object
+      required: [items, total, resourceVersion]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/ConfigObject'}}
+        total: {type: integer, minimum: 0}
+        resourceVersion: {type: string}
+    ValidationResult:
+      type: object
+      required: [ok, mode, results]
+      properties:
+        ok: {type: boolean}
+        mode: {type: string, enum: [xds, static]}
+        irVersion: {type: string, nullable: true}
+        results: {type: array, items: {$ref: '#/components/schemas/Diagnostic'}}
+    PublishResult:
+      type: object
+      required: [version, delivery]
+      properties:
+        version: {$ref: '#/components/schemas/Version'}
+        delivery:
+          type: object
+          required: [mode, state]
+          properties:
+            mode: {type: string, enum: [xds, static]}
+            state: {type: string}
+    Version:
+      type: object
+      required: [id, createdAt, author, message, mode, irVersion, state]
+      properties:
+        id: {type: integer, format: int64}
+        createdAt: {type: string, format: date-time}
+        author: {type: string}
+        message: {type: string}
+        mode: {type: string}
+        irVersion: {type: string}
+        state: {type: string}
+        parentId: {type: integer, format: int64}
+        rollbackOf: {type: integer, format: int64}
+    Certificate:
+      type: object
+      required: [name, sans, updatedAt, certificatePem, references]
+      properties:
+        name: {type: string}
+        subject: {type: string}
+        sans: {type: array, items: {type: string}}
+        notAfter: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+        certificatePem: {type: string, description: Public certificate chain only}
+        references: {type: array, items: {type: string}}
+    CreateCertificateRequest:
+      type: object
+      required: [name, certificatePem, privateKeyPem]
+      properties:
+        name: {type: string}
+        certificatePem: {type: string}
+        privateKeyPem: {type: string, format: password, writeOnly: true}
+  responses:
+    Session:
+      description: Authenticated session
+      headers:
+        Set-Cookie: {schema: {type: string}}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Session'}
+    DraftMutation:
+      description: Draft mutation result
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/DraftMutation'}
+    StatePayload:
+      description: Normalized bounded state payload
+      content:
+        application/json:
+          schema: {type: object, additionalProperties: true}
+    Probe:
+      description: Process probe
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [status]
+            properties:
+              status: {type: string}
+    BadRequest: {$ref: '#/components/responses/Error400'}
+    Unauthenticated: {$ref: '#/components/responses/Error401'}
+    Conflict: {$ref: '#/components/responses/Error409'}
+    NotFound: {$ref: '#/components/responses/Error404'}
+    ValidationFailed: {$ref: '#/components/responses/Error422'}
+    RateLimited: {$ref: '#/components/responses/Error429'}
+    BadGateway: {$ref: '#/components/responses/Error502'}
+    Error400: {description: Invalid request, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+    Error401: {description: Authentication required, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+    Error404: {description: Resource not found, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+    Error409: {description: Resource conflict, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+    Error422: {description: Configuration validation failed, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+    Error429: {description: Login rate limited, headers: {Retry-After: {schema: {type: integer}}}, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+    Error502: {description: Envoy admin unavailable, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
