@@ -330,6 +330,10 @@ func buildSupervisor(cfg *config.Config, probe proc.Probe, log *slog.Logger) (*p
 	if binary.Warning != "" {
 		log.Warn("managed Envoy is outside the tested compatibility window", "warning", binary.Warning)
 	}
+	launcherPath, err := os.Executable()
+	if err != nil {
+		return nil, fmt.Errorf("core: resolve process launcher: %w", err)
+	}
 	configPath := cfg.Deliver.Static.OutputPath
 	if cfg.Deliver.Mode == config.ModeXDS {
 		configPath = filepath.Join(cfg.DataDir, "envoy", "bootstrap.yaml")
@@ -354,7 +358,7 @@ func buildSupervisor(cfg *config.Config, probe proc.Probe, log *slog.Logger) (*p
 			Initial: backoff.Initial.Duration, Max: backoff.Max.Duration,
 			ResetAfter: backoff.ResetAfter.Duration, GiveUp: backoff.GiveUpPer10m,
 		},
-	}, proc.OSRunner{}, probe, log)
+	}, proc.OSRunner{LauncherPath: launcherPath}, probe, log)
 }
 
 func staticAdminSocket(address string) string {

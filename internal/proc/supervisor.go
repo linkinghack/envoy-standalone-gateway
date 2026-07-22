@@ -177,10 +177,16 @@ func (s *Supervisor) waitForEpoch(ctx context.Context, epoch int, done <-chan Ex
 	defer timeout.Stop()
 	ticker := time.NewTicker(s.config.PollInterval)
 	defer ticker.Stop()
+	var lastObservation string
 	for {
 		ready, observedEpoch, err := s.probe.ObserveProcess(ctx)
 		if err == nil && ready && observedEpoch == epoch {
 			return nil
+		}
+		if err != nil {
+			lastObservation = err.Error()
+		} else {
+			lastObservation = fmt.Sprintf("ready=%t epoch=%d", ready, observedEpoch)
 		}
 		select {
 		case <-ctx.Done():
@@ -191,7 +197,7 @@ func (s *Supervisor) waitForEpoch(ctx context.Context, epoch int, done <-chan Ex
 			}
 			return errors.New("process exited before readiness")
 		case <-timeout.C:
-			return fmt.Errorf("LIVE epoch %d not observed within %s", epoch, s.config.LiveTimeout)
+			return fmt.Errorf("LIVE epoch %d not observed within %s (last: %s)", epoch, s.config.LiveTimeout, lastObservation)
 		case <-ticker.C:
 		}
 	}
@@ -216,6 +222,7 @@ func (s *Supervisor) monitor(process Process, epoch int, started time.Time) {
 	s.mu.Unlock()
 	delay, degraded := s.backoff.Failure(exit.At, exit.At.Sub(started))
 	detail := fmt.Sprintf("unexpected Envoy exit code=%d signal=%s err=%v stderr=%s", exit.Code, exit.Signal, exit.Err, process.StderrTail())
+	s.log.Error("managed Envoy exited", "pid", process.PID(), "epoch", epoch, "detail", detail)
 	s.emit("Exited", process.PID(), epoch, detail)
 	if degraded || epoch != 0 {
 		_ = s.degrade(detail)

@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 
+	"github.com/linkinghack/envoy-standalone-gateway/internal/proc"
 	"github.com/linkinghack/envoy-standalone-gateway/internal/version"
 )
 
@@ -21,6 +22,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	switch args[0] {
+	case "__proc-launcher":
+		return proc.RunLauncher(args[1:], stdout, stderr)
 	case "version":
 		eprintf(stdout, "%s %s\n", version.BinaryName, version.Version)
 		return 0
