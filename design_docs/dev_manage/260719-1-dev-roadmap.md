@@ -12,7 +12,7 @@
 architecture §8 计划的全部 7 份模块详细设计已完成并交叉互认，重大选型（Go / go-control-plane / SQLite / spec-first OpenAPI）均已终审。剩余未决项分三类，均不阻塞开发：
 
 1. **编码期决策项**（C1~C4、DL1/DL4/DL6、CD1~CD3 等）：各设计文档已标注决策时机，由对应冲刺的 task 落地并回写文档；
-2. **延后终审项**（D1 命名、D3/AD1 前端框架、D5 证书加密）：到达对应冲刺时终审；
+2. **延后终审项**（D1 命名、D5 证书加密）：到达对应冲刺时终审；D3/AD1 已在 [M1 工程实施计划 §2](engineering_plan/260722-1-m1-completion-plan.md#2-终审决策) 终审为 React + TypeScript + Vite + shadcn/ui；
 3. **小缺口**：M-CORE 装配层无独立设计文档、`esgw.yaml` 完整配置 schema 未定——随 S2 冲刺补齐（见 §3）。
 
 ## 2. 冲刺组织约定
@@ -28,13 +28,13 @@ architecture §8 计划的全部 7 份模块详细设计已完成并交叉互认
 | Sprint | 里程碑 | 主题 | 范围概要 | 主要设计依据 | 前置 |
 |---|---|---|---|---|---|
 | **S1 (260719)** | M0 | 协议与编译器 | `internal/protocol` 五对象类型/strict decode/JSON Schema；`internal/compile` F1~F6 流水线 + escape hatch；static 渲染；`esgw compile` CLI；golden file 测试 + envoy validate + S1 真实流量 e2e | [协议 v0](../system_design/260716-1-gateway-config-protocol-v0.md)、[编译层](../system_design/260716-2-compile-ir-design.md) | — ✅ 已完成（2026-07-20，A1~A8 核验见 [sprints/260719](sprints/260719/plan_todos_trace.md)） |
-| **S2 (260720)** | M1 | xDS 下发与运行时骨架 | M-CORE 装配/生命周期（**补轻量设计文档 + esgw.yaml schema**）；`deliver/xds`（ADS server、FromIR、ACK/NACK）；接入 bootstrap 生成与 `esgw bootstrap` 命令；ADS 拉起 S1 配置 e2e（M0 验收第 3 项在此闭环） | [下发层](../system_design/260717-1-deliver-layer-design.md) §1~§3、§6 | S1 ✅ 已完成（2026-07-20，A1~A8 核验见 [sprints/260720](sprints/260720/plan_todos_trace.md)；远端 CI 待推送确认） |
-| S3 | M1 | 配置域与发布流 | M-STORE（SQLite/迁移）；M-CONF（文件真源加载、Origin 定位 CRUD、版本快照、双视角 diff、回滚、发布流状态机、fsnotify 外部修改检测）；原生 static → IR 解析入口（FR-2.1） | [配置域](../system_design/260717-2-config-domain-design.md) | S1；已完成（260721 T1~T6：基础存储、草稿/快照、发布状态机、native/diff/回滚/fsnotify/CRUD；S4 状态采集骨架提前落地） |
-| S4 | M1 | 状态采集与生效确认 | M-STATE（admin client 白名单/串行调度、状态归一化、归属反解、确认快速通道、时间序列环形缓冲、Prometheus 透传）；发布流 CONFIRMING→EFFECTIVE 闭环联调 | [状态采集](../system_design/260717-4-state-collection-design.md) | S2、S3；已完成（260722 T1~T4，质量审计缺口已补齐），S5 接入 API |
-| S5 | M1 | 管理 API | spec-first `api/openapi.yaml` + oapi-codegen 终审（AD2）；鉴权/会话/CSRF/引导；配置域、状态、证书库全量 REST 端点；SPA 静态资源服务骨架 | [控制台 API](../system_design/260717-3-console-api-design.md) §3~§5 | S3、S4 |
-| S6 | M1 | 控制台 P0 | 前端框架终审（D3/AD1）；React SPA：配置五对象 CRUD（表单+YAML）、运行状态视图、简版发布流、证书库、专家模式、编译产物、系统信息 | [控制台 API](../system_design/260717-3-console-api-design.md) §2、§6 | S5 |
-| S7 | M1 | static 模式与进程托管 | M-PROC（发现/启动/接管/崩溃退避）；hot restart 协调协议（DL1/DL4/DL6 实测定）；static Apply 路径与生效语义 | [下发层](../system_design/260717-1-deliver-layer-design.md) §4~§5 | S2 |
-| S8 | M1 | 交付物与 M1 收口 | systemd unit + 安装脚本；Docker 镜像（esgw / all-in-one）；AD8 默认监听与引导参数终审；跨模块 e2e 矩阵（T1/T2 拓扑 × xds/static）；用户文档首版 | 架构 §7、需求 FR-5 | S6、S7 |
+| **S2 (260720)** | M1 | xDS 下发与运行时骨架 | M-CORE 装配/生命周期（**补轻量设计文档 + esgw.yaml schema**）；`deliver/xds`（ADS server、FromIR、ACK/NACK）；接入 bootstrap 生成与 `esgw bootstrap` 命令；ADS 拉起 S1 配置 e2e（M0 验收第 3 项在此闭环） | [下发层](../system_design/260717-1-deliver-layer-design.md) §1~§3、§6 | S1 ✅ 已完成（2026-07-20，A1~A8 核验见 [sprints/260720](sprints/260720/plan_todos_trace.md)；远端 CI 五 job 全绿） |
+| **S3 (260721)** | M1 | 配置域与发布流 | M-STORE（SQLite/迁移）；M-CONF（文件真源加载、Origin 定位 CRUD、版本快照、双视角 diff、回滚、发布流状态机、fsnotify 外部修改检测）；原生 static → IR 解析入口（FR-2.1） | [配置域](../system_design/260717-2-config-domain-design.md) | S1；✅ 已完成并于 2026-07-22 独立复核（[验收证据](sprints/260721/plan_todos_trace.md)）：T1~T6 直接测试覆盖存储、草稿/快照、发布状态机、native/diff/回滚/watch/CRUD；S4 骨架提前落地 |
+| **S4 (260722)** | M1 | 状态采集与生效确认 | M-STATE（admin client 白名单/串行调度、状态归一化、归属反解、确认快速通道、时间序列环形缓冲、Prometheus 透传）；发布流 CONFIRMING→EFFECTIVE 闭环联调 | [状态采集](../system_design/260717-4-state-collection-design.md) | S2、S3；✅ 已完成并于 2026-07-22 独立复核（[验收证据](sprints/260722/plan_todos_trace.md)）：T1~T4 直接测试与真实 Envoy 门禁均通过；S5 接入 API |
+| S5 (计划 260723) | M1 | 管理 API | spec-first `api/openapi.yaml` + 生成一致性门禁；鉴权/会话/CSRF/引导；配置域、状态、证书库 P0 REST 端点；SPA 静态资源服务骨架 | [控制台 API](../system_design/260717-3-console-api-design.md) §3~§5、[M1 工程实施计划](engineering_plan/260722-1-m1-completion-plan.md) | S3、S4；待实施 |
+| S6 (计划 260724) | M1 | 控制台 P0 | React + TypeScript + Vite + shadcn/ui；配置五对象 CRUD（表单+YAML）、运行状态视图、简版发布流、证书库、专家模式、编译产物、系统信息 | [控制台 API](../system_design/260717-3-console-api-design.md) §2、§6、[M1 工程实施计划](engineering_plan/260722-1-m1-completion-plan.md) | S5；待实施 |
+| S7 (计划 260725) | M1 | static 模式与进程托管 | M-PROC（发现/启动/接管/崩溃退避）；hot restart 协调协议（DL1/DL4/DL6 实测定）；static Apply 路径与生效语义 | [下发层](../system_design/260717-1-deliver-layer-design.md) §4~§5、[M1 工程实施计划](engineering_plan/260722-1-m1-completion-plan.md) | S2；待实施（可与 S5/S6 独立推进） |
+| S8 (计划 260726) | M1 | 交付物与 M1 收口 | systemd unit + 安装脚本；Docker 镜像（esgw / all-in-one）；AD8 默认监听与引导参数终审；跨模块 e2e 矩阵（T1/T2 拓扑 × xds/static）；用户文档首版 | 架构 §7、需求 FR-5、[M1 工程实施计划](engineering_plan/260722-1-m1-completion-plan.md) | S6、S7；待实施 |
 | S9+ | M2 | 统计视图、版本历史/回滚 UI 完整版、k8s disco（M-DISCO + T3/Helm）、协议规范对外发布、P1 策略补全（L4/mTLS/熔断等） | 按 P1 需求与真实反馈排期，届时拆分冲刺 | [k8s disco](../system_design/260717-5-k8s-disco-design.md) 等 | M1 |
 
 依赖说明：S3 与 S2 可并行（都只依赖 S1 的 IR 契约）；S7 与 S4~S6 可并行。单人/单 agent 顺序推进则按表序执行。
