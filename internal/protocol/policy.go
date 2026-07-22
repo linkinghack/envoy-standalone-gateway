@@ -59,11 +59,11 @@ type CORSPolicy struct {
 
 // RateLimitPolicy 是本地令牌桶限流（P1，FR-1.3）。分布式限流为后续版本。
 type RateLimitPolicy struct {
-	Requests int32         `json:"requests"`
+	Requests int32         `json:"requests" jsonschema:"minimum=1,maximum=2147483647"`
 	Unit     RateLimitUnit `json:"unit"`
-	Burst    *int32        `json:"burst,omitempty"`   // 默认 = requests
-	Key      string        `json:"key,omitempty"`     // clientIP(默认) | header:<name> —— 限流维度
-	MaxKeys  *int32        `json:"maxKeys,omitempty"` // 动态 key 桶 LRU 容量，默认 10000
+	Burst    *int32        `json:"burst,omitempty" jsonschema:"minimum=1,maximum=2147483647"` // 默认 = requests
+	Key      string        `json:"key,omitempty"`                                             // clientIP(默认) | header:<name> —— 限流维度
+	MaxKeys  *int32        `json:"maxKeys,omitempty" jsonschema:"minimum=1,maximum=100000"`   // 动态 key 桶 LRU 容量，默认 10000
 }
 
 // JWTPolicy 是 JWT 校验（P1）。

@@ -29,6 +29,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 0
 	case "compile":
 		return runCompile(args[1:], stdout, stderr)
+	case "schema":
+		return runSchema(args[1:], stdout, stderr)
+	case "conformance":
+		return runConformance(args[1:], stdout, stderr)
 	case "serve":
 		return runServe(args[1:], stderr)
 	case "bootstrap":
@@ -47,6 +51,8 @@ func usage(stderr io.Writer) {
 
 Commands:
   compile   compile a config directory into an Envoy config artifact
+  schema    export the versioned gateway protocol JSON Schema bundle
+  conformance validate a protocol config directory and emit stable JSON diagnostics
   serve     run xDS and management API: -c <esgw.yaml> [-f <data-dir/config.d>]
   bootstrap export an Envoy bootstrap for xDS mode: -c <esgw.yaml> [-o <file>]
   healthcheck probe an HTTP readiness endpoint: [--url <url>] [--timeout <duration>]
