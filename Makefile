@@ -77,6 +77,10 @@ packaging-test: ## systemd 与安装/升级/卸载脚本测试
 image-smoke: ## 两类 OCI 镜像的非 root/健康检查 smoke
 	packaging/tests/image_smoke.sh
 
+.PHONY: docs-test
+docs-test: ## 用户文档链接、示例配置与 compose 检查
+	scripts/docs-test.sh
+
 .PHONY: tidy
 tidy:
 	go mod tidy

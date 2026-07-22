@@ -40,7 +40,7 @@ A lightweight management plane (single binary + web UI) that drives one or more 
 
 [![ci](https://github.com/linkinghack/envoy-standalone-gateway/actions/workflows/ci.yaml/badge.svg)](https://github.com/linkinghack/envoy-standalone-gateway/actions/workflows/ci.yaml)
 
-🚧 **M0 in progress** (protocol & compiler, [Sprint 260719](design_docs/dev_manage/sprints/260719/plan_todos_trace.md)). See [`design_docs/`](design_docs/) for requirements analysis and system design documents.
+✅ **M1 available**: xDS/static delivery, managed or external Envoy, authenticated management API/UI, systemd and Docker packaging. Start with the [10-minute quickstart](docs/quickstart.md); see [`docs/`](docs/) for operations and security guidance and [`design_docs/`](design_docs/) for design history.
 
 ## Development
 

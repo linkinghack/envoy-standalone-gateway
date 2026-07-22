@@ -15,6 +15,7 @@ RUN groupadd --system --gid 65532 esgw \
     && install -d -o 65532 -g 65532 -m 0750 /run/esgw /etc/esgw
 COPY --from=build /out/esgw /usr/local/bin/esgw
 COPY --chown=65532:65532 --chmod=0440 packaging/docker/esgw-all-in-one.yaml /etc/esgw/esgw.yaml
+COPY --chown=65532:65532 --chmod=0444 packaging/examples/quickstart-gateway.yaml /usr/share/esgw/examples/quickstart-gateway.yaml
 USER 65532:65532
 VOLUME ["/var/lib/esgw"]
 EXPOSE 8080 10080

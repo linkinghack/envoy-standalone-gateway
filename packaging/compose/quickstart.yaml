@@ -1,0 +1,35 @@
+services:
+  config-init:
+    build:
+      context: ../..
+      dockerfile: packaging/docker/Dockerfile.all-in-one
+    image: esgw-all-in-one:local
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["test -e /var/lib/esgw/config.d/gateway.yaml || cp /usr/share/esgw/examples/quickstart-gateway.yaml /var/lib/esgw/config.d/gateway.yaml"]
+    volumes:
+      - esgw-data:/var/lib/esgw
+    restart: "no"
+
+  gateway:
+    image: esgw-all-in-one:local
+    environment:
+      ESGW_INITIAL_ADMIN_PASSWORD: ${ESGW_INITIAL_ADMIN_PASSWORD:-}
+    depends_on:
+      config-init:
+        condition: service_completed_successfully
+      backend:
+        condition: service_started
+    ports:
+      - "127.0.0.1:8080:8080"
+      - "10080:10080"
+    volumes:
+      - esgw-data:/var/lib/esgw
+    restart: unless-stopped
+
+  backend:
+    image: hashicorp/http-echo
+    command: ["-listen=:8080", "-text=hello-from-esgw"]
+    restart: unless-stopped
+
+volumes:
+  esgw-data:

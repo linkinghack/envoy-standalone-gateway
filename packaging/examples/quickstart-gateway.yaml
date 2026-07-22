@@ -1,0 +1,31 @@
+apiVersion: esgw/v1alpha1
+kind: Listener
+metadata:
+  name: quickstart
+spec:
+  address: 0.0.0.0
+  port: 10080
+  protocol: HTTP
+---
+apiVersion: esgw/v1alpha1
+kind: Route
+metadata:
+  name: quickstart
+spec:
+  listeners: [quickstart]
+  hostnames: [quickstart.local]
+  rules:
+    - match:
+        path: {prefix: /}
+      backends:
+        - upstream: quickstart
+---
+apiVersion: esgw/v1alpha1
+kind: Upstream
+metadata:
+  name: quickstart
+spec:
+  dns:
+    hostname: backend
+    port: 8080
+    resolution: logical

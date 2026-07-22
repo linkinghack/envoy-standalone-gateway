@@ -14,4 +14,7 @@
 
 ## 进展
 
-- 待开始。
+- 已完成：根 README 指向 M1 用户入口，`docs/` 提供快速开始、配置/拓扑、运维排障、备份恢复、升级回滚和安全边界六份主题文档。
+- Docker quickstart 从空 volume 初始化真实三对象代理，提供控制台登录与一条可断言的 curl；Linux 路径覆盖 Envoy 兼容范围、安装、密码注入和首次配置。
+- 运维文档明确 systemd 管理面重启保持数据面、all-in-one 生命周期边界，以及 external static 必须显式重启的语义。
+- `make docs-test` 实际编译 quickstart 配置并解析三份 compose，同时检查关键文档链接/安全提示；与 `make packaging-test` 一并通过。
