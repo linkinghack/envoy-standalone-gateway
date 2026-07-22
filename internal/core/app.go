@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -112,6 +113,10 @@ func NewApp(cfg *config.Config, assets fs.FS, log *slog.Logger) (*App, error) {
 				return fail(fmt.Errorf("core: initialize admin account: %w", err))
 			}
 		}
+		// Argon2id intentionally uses a large transient arena. The management
+		// plane is long-lived, so return those bootstrap pages to the OS instead
+		// of carrying the one-time password cost in steady-state RSS.
+		debug.FreeOSMemory()
 	}
 
 	publisher := &conf.Publisher{DataDir: cfg.DataDir, Store: durable, Deliver: deliverer, Mode: mode}
