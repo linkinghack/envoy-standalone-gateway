@@ -22,6 +22,15 @@ func defaultConfig() *Config {
 				AdminAddress: DefaultAdminAddress,
 				AckTimeout:   protocol.Duration{Duration: DefaultAckTimeout},
 			},
+			Static: StaticConfig{OutputPath: filepath.Join(DefaultDataDir, "envoy", "envoy.yaml")},
+		},
+		Proc: ProcConfig{
+			LiveTimeout: protocol.Duration{Duration: DefaultLiveTimeout}, DrainTime: protocol.Duration{Duration: DefaultDrainTime},
+			ParentShutdownTime: protocol.Duration{Duration: DefaultParentShutdown}, AdoptPolicy: DefaultAdoptPolicy,
+			RestartBackoff: RestartBackoffConfig{
+				Initial: protocol.Duration{Duration: DefaultBackoffInitial}, Max: protocol.Duration{Duration: DefaultBackoffMax},
+				ResetAfter: protocol.Duration{Duration: DefaultBackoffResetAfter}, GiveUpPer10m: DefaultGiveUpPer10m,
+			},
 		},
 		API: APIConfig{Listen: DefaultAPIListen, Topology: DefaultTopology},
 		State: StateConfig{
@@ -67,6 +76,21 @@ deliver:
     nodeCluster: edge
     adminAddress: 127.0.0.1:9901
     ackTimeout: 30s
+  static:
+    outputPath: /tmp/esgw-data/rendered/envoy.yaml
+proc:
+  enabled: true
+  envoyPath: /usr/local/bin/envoy
+  baseID: 42
+  liveTimeout: 20s
+  drainTime: 5m
+  parentShutdownTime: 8m
+  adoptPolicy: restart
+  restartBackoff:
+    initial: 2s
+    max: 20s
+    resetAfter: 2m
+    giveUpPer10m: 7
 api:
   listen: 0.0.0.0:8080
   topology: sidecar
@@ -87,6 +111,16 @@ state:
 						NodeCluster:  "edge",
 						AdminAddress: "127.0.0.1:9901",
 						AckTimeout:   protocol.Duration{Duration: 30 * time.Second},
+					},
+					Static: StaticConfig{OutputPath: "/tmp/esgw-data/rendered/envoy.yaml"},
+				},
+				Proc: ProcConfig{
+					Enabled: true, EnvoyPath: "/usr/local/bin/envoy", BaseID: 42,
+					LiveTimeout: protocol.Duration{Duration: 20 * time.Second}, DrainTime: protocol.Duration{Duration: 5 * time.Minute},
+					ParentShutdownTime: protocol.Duration{Duration: 8 * time.Minute}, AdoptPolicy: "restart",
+					RestartBackoff: RestartBackoffConfig{
+						Initial: protocol.Duration{Duration: 2 * time.Second}, Max: protocol.Duration{Duration: 20 * time.Second},
+						ResetAfter: protocol.Duration{Duration: 2 * time.Minute}, GiveUpPer10m: 7,
 					},
 				},
 				API: APIConfig{Listen: "0.0.0.0:8080", Topology: "sidecar"},
@@ -111,9 +145,9 @@ deliver:
 			}(),
 		},
 		{
-			name:    "未知顶层字段报错（proc.* 等保留键当前不接受，SD4）",
-			content: "proc:\n  enabled: true\n",
-			wantErr: `unknown field "proc"`,
+			name:    "未知 proc 嵌套字段报错",
+			content: "proc:\n  enabled: true\n  killUnknown: true\n",
+			wantErr: `unknown field "killUnknown"`,
 		},
 		{
 			name:    "未知嵌套字段报错（deliver.xds.tls 为 P2 预留）",
@@ -131,7 +165,7 @@ deliver:
 			wantErr: `deliver.mode "grpc" invalid`,
 		},
 		{
-			name:    "mode: static 为合法枚举（serve 启动才报未实现，SD2）",
+			name:    "mode: static 为合法枚举",
 			content: "deliver:\n  mode: static\n",
 			want: func() *Config {
 				c := defaultConfig()
@@ -216,6 +250,31 @@ deliver:
 			name:    "ackTimeout 非正值报错",
 			content: "deliver:\n  xds:\n    ackTimeout: -5s\n",
 			wantErr: "positive duration",
+		},
+		{
+			name:    "static output 必须为绝对路径",
+			content: "deliver:\n  static:\n    outputPath: relative/envoy.yaml\n",
+			wantErr: "must be absolute",
+		},
+		{
+			name:    "parent shutdown 安全下限",
+			content: "proc:\n  parentShutdownTime: 119s\n",
+			wantErr: "at least 2m",
+		},
+		{
+			name:    "live timeout 必须短于 parent shutdown",
+			content: "proc:\n  liveTimeout: 3m\n  parentShutdownTime: 2m\n",
+			wantErr: "must be shorter",
+		},
+		{
+			name:    "adopt policy 严格枚举",
+			content: "proc:\n  adoptPolicy: kill\n",
+			wantErr: "proc.adoptPolicy",
+		},
+		{
+			name:    "backoff initial 不超过 max",
+			content: "proc:\n  restartBackoff:\n    initial: 31s\n    max: 30s\n",
+			wantErr: "initial must not exceed max",
 		},
 		{
 			name:    "api listen 必须显式 host",

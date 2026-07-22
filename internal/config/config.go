@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/netip"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -27,8 +28,9 @@ const (
 	DefaultAdminAddress = "unix:///var/run/esgw/envoy-admin.sock" // SD5
 	DefaultAPIListen    = "127.0.0.1:8080"
 	DefaultTopology     = "standalone"
+	DefaultAdoptPolicy  = "keep"
 
-	// ModeXDS 为默认下发模式；ModeStatic 为合法枚举，serve 启动即报未实现（S7，SD2）。
+	// ModeXDS 为默认下发模式；ModeStatic 由 S7 runtime deliverer 实现。
 	ModeXDS    = "xds"
 	ModeStatic = "static"
 )
@@ -36,10 +38,21 @@ const (
 // DefaultAckTimeout 是 ACK 观察窗口默认值（下发层 §2.5；S2 仅作保留字段，SD7）。
 const DefaultAckTimeout = 15 * time.Second
 
+const (
+	DefaultLiveTimeout       = 30 * time.Second
+	DefaultDrainTime         = 10 * time.Minute
+	DefaultParentShutdown    = 15 * time.Minute
+	DefaultBackoffInitial    = time.Second
+	DefaultBackoffMax        = 30 * time.Second
+	DefaultBackoffResetAfter = time.Minute
+	DefaultGiveUpPer10m      = 5
+)
+
 // Config 是 esgw.yaml 的根结构。
 type Config struct {
 	DataDir string        `json:"dataDir"`
 	Deliver DeliverConfig `json:"deliver"`
+	Proc    ProcConfig    `json:"proc"`
 	API     APIConfig     `json:"api"`
 	State   StateConfig   `json:"state"`
 }
@@ -61,8 +74,34 @@ type StateConfig struct {
 
 // DeliverConfig 对应 deliver.*（下发层 §1.3）。
 type DeliverConfig struct {
-	Mode string    `json:"mode"` // xds | static
-	XDS  XDSConfig `json:"xds"`
+	Mode   string       `json:"mode"` // xds | static
+	XDS    XDSConfig    `json:"xds"`
+	Static StaticConfig `json:"static"`
+}
+
+// StaticConfig controls the atomic runtime static artifact.
+type StaticConfig struct {
+	OutputPath string `json:"outputPath"`
+}
+
+// ProcConfig controls optional local Envoy lifecycle ownership.
+type ProcConfig struct {
+	Enabled            bool                 `json:"enabled"`
+	EnvoyPath          string               `json:"envoyPath"`
+	BaseID             uint32               `json:"baseID"`
+	LiveTimeout        protocol.Duration    `json:"liveTimeout"`
+	DrainTime          protocol.Duration    `json:"drainTime"`
+	ParentShutdownTime protocol.Duration    `json:"parentShutdownTime"`
+	AdoptPolicy        string               `json:"adoptPolicy"`
+	RestartBackoff     RestartBackoffConfig `json:"restartBackoff"`
+}
+
+// RestartBackoffConfig bounds automatic recovery after unexpected exits.
+type RestartBackoffConfig struct {
+	Initial      protocol.Duration `json:"initial"`
+	Max          protocol.Duration `json:"max"`
+	ResetAfter   protocol.Duration `json:"resetAfter"`
+	GiveUpPer10m int               `json:"giveUpPer10m"`
 }
 
 // XDSConfig 对应 deliver.xds.*。TLS 字段为 P2 预留（下发层 §2.7），
@@ -155,6 +194,33 @@ func (c *Config) applyDefaults() {
 	if x.AckTimeout.Duration == 0 {
 		x.AckTimeout = protocol.Duration{Duration: DefaultAckTimeout}
 	}
+	if c.Deliver.Static.OutputPath == "" {
+		c.Deliver.Static.OutputPath = filepath.Join(c.DataDir, "envoy", "envoy.yaml")
+	}
+	if c.Proc.LiveTimeout.Duration == 0 {
+		c.Proc.LiveTimeout = protocol.Duration{Duration: DefaultLiveTimeout}
+	}
+	if c.Proc.DrainTime.Duration == 0 {
+		c.Proc.DrainTime = protocol.Duration{Duration: DefaultDrainTime}
+	}
+	if c.Proc.ParentShutdownTime.Duration == 0 {
+		c.Proc.ParentShutdownTime = protocol.Duration{Duration: DefaultParentShutdown}
+	}
+	if c.Proc.AdoptPolicy == "" {
+		c.Proc.AdoptPolicy = DefaultAdoptPolicy
+	}
+	if c.Proc.RestartBackoff.Initial.Duration == 0 {
+		c.Proc.RestartBackoff.Initial = protocol.Duration{Duration: DefaultBackoffInitial}
+	}
+	if c.Proc.RestartBackoff.Max.Duration == 0 {
+		c.Proc.RestartBackoff.Max = protocol.Duration{Duration: DefaultBackoffMax}
+	}
+	if c.Proc.RestartBackoff.ResetAfter.Duration == 0 {
+		c.Proc.RestartBackoff.ResetAfter = protocol.Duration{Duration: DefaultBackoffResetAfter}
+	}
+	if c.Proc.RestartBackoff.GiveUpPer10m == 0 {
+		c.Proc.RestartBackoff.GiveUpPer10m = DefaultGiveUpPer10m
+	}
 	if c.API.Listen == "" {
 		c.API.Listen = DefaultAPIListen
 	}
@@ -191,6 +257,34 @@ func (c *Config) validate() error {
 	}
 	if c.Deliver.XDS.AckTimeout.Duration <= 0 {
 		return fmt.Errorf("deliver.xds.ackTimeout must be a positive duration, got %q", c.Deliver.XDS.AckTimeout.String())
+	}
+	if !filepath.IsAbs(c.Deliver.Static.OutputPath) {
+		return fmt.Errorf("deliver.static.outputPath %q must be absolute", c.Deliver.Static.OutputPath)
+	}
+	if c.Proc.LiveTimeout.Duration <= 0 {
+		return errors.New("proc.liveTimeout must be a positive duration")
+	}
+	if c.Proc.DrainTime.Duration <= 0 {
+		return errors.New("proc.drainTime must be a positive duration")
+	}
+	if c.Proc.ParentShutdownTime.Duration < 2*time.Minute {
+		return errors.New("proc.parentShutdownTime must be at least 2m")
+	}
+	if c.Proc.LiveTimeout.Duration >= c.Proc.ParentShutdownTime.Duration {
+		return errors.New("proc.liveTimeout must be shorter than proc.parentShutdownTime")
+	}
+	if c.Proc.AdoptPolicy != "keep" && c.Proc.AdoptPolicy != "restart" {
+		return fmt.Errorf("proc.adoptPolicy %q invalid (want keep | restart)", c.Proc.AdoptPolicy)
+	}
+	backoff := c.Proc.RestartBackoff
+	if backoff.Initial.Duration <= 0 || backoff.Max.Duration <= 0 || backoff.ResetAfter.Duration <= 0 {
+		return errors.New("proc.restartBackoff durations must be positive")
+	}
+	if backoff.Initial.Duration > backoff.Max.Duration {
+		return errors.New("proc.restartBackoff.initial must not exceed max")
+	}
+	if backoff.GiveUpPer10m < 1 {
+		return errors.New("proc.restartBackoff.giveUpPer10m must be at least 1")
 	}
 	if err := validateAPIListen(c.API.Listen); err != nil {
 		return fmt.Errorf("api.listen: %w", err)
