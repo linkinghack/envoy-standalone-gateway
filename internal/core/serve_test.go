@@ -5,6 +5,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -30,6 +31,7 @@ func discardLog() *slog.Logger {
 func testConfig(listen string) *config.Config {
 	return &config.Config{
 		DataDir: config.DefaultDataDir,
+		API:     config.APIConfig{Listen: config.DefaultAPIListen, Topology: config.DefaultTopology},
 		Deliver: config.DeliverConfig{
 			Mode: config.ModeXDS,
 			XDS: config.XDSConfig{
@@ -55,9 +57,17 @@ func TestRunServeStaticMode(t *testing.T) {
 // 并返回错误（不进入下发）。
 func TestRunServeBadConfigDir(t *testing.T) {
 	cfg := testConfig("127.0.0.1:0")
-	err := RunServe(context.Background(), cfg, filepath.Join(t.TempDir(), "nonexistent"), discardLog())
-	if err == nil || !strings.Contains(err.Error(), "load config dir") {
-		t.Fatalf("RunServe err = %v, want load config dir error", err)
+	cfg.DataDir = t.TempDir()
+	configDir := filepath.Join(cfg.DataDir, "config.d")
+	if err := os.MkdirAll(configDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, "bad.yaml"), []byte("kind: nope\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	err := RunServe(context.Background(), cfg, configDir, discardLog())
+	if err == nil || !strings.Contains(err.Error(), "load draft") {
+		t.Fatalf("RunServe err = %v, want load draft error", err)
 	}
 }
 
@@ -83,10 +93,43 @@ func TestRunServeSmoke(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	apiProbe, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("API probe listen: %v", err)
+	}
+	apiAddr := apiProbe.Addr().String()
+	if err := apiProbe.Close(); err != nil {
+		t.Fatal(err)
+	}
+	dataDir := t.TempDir()
+	configDir := filepath.Join(dataDir, "config.d")
+	if err := os.MkdirAll(configDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	sourceDir := filepath.Join("testdata", "s1", "input")
+	entries, err := os.ReadDir(sourceDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		content, readErr := os.ReadFile(filepath.Join(sourceDir, entry.Name()))
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		if writeErr := os.WriteFile(filepath.Join(configDir, entry.Name()), content, 0o600); writeErr != nil {
+			t.Fatal(writeErr)
+		}
+	}
+	cfg := testConfig(addr)
+	cfg.DataDir = dataDir
+	cfg.API.Listen = apiAddr
 	ctx, cancel := context.WithCancel(context.Background())
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- RunServe(ctx, testConfig(addr), filepath.Join("testdata", "s1", "input"), discardLog())
+		errCh <- RunServe(ctx, cfg, configDir, discardLog())
 	}()
 
 	// 等服务就绪（拨号重试收敛，不靠固定 sleep）。

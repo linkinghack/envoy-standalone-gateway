@@ -42,7 +42,7 @@ func usage(stderr io.Writer) {
 
 Commands:
   compile   compile a config directory into an Envoy config artifact
-  serve     run the control plane (xDS ADS server): -c <esgw.yaml> -f <config-dir>
+  serve     run xDS and management API: -c <esgw.yaml> [-f <data-dir/config.d>]
   bootstrap export an Envoy bootstrap for xDS mode: -c <esgw.yaml> [-o <file>]
   version   print version
 `, version.BinaryName)

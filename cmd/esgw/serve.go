@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"github.com/linkinghack/envoy-standalone-gateway/internal/config"
@@ -14,11 +15,10 @@ import (
 
 // 本文件实现 `esgw serve`（S2 M-CORE 骨架，technical_design SD2）：
 //
-//	esgw serve -c <esgw.yaml> -f <config-dir>
+//	esgw serve -c <esgw.yaml> [-f <data-dir/config.d>]
 //
-// 两个 flag 均必填：-c 是 esgw 进程自身配置（暂无默认值，演进方向见
-// dev_design 260720-1 §3），-f 是网关配置目录（S2 过渡形态的配置真源，
-// S3 起由 M-CONF/M-STORE 接管）。
+// -c 是 esgw 进程自身配置；配置真源固定为 dataDir/config.d。-f 仅保留为
+// 兼容性断言，省略时自动使用 dataDir/config.d，不能指向第二份真源。
 //
 // 接线：config.LoadFile → core.RunServe；信号处理 SIGINT/SIGTERM → 取消
 // serve 上下文 → xDS gRPC server GracefulStop（dev_design 260720-1 §2.2）。
@@ -30,7 +30,7 @@ func runServe(args []string, stderr io.Writer) int {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	cfgPath := fs.String("c", "", "esgw.yaml config file (required)")
-	dir := fs.String("f", "", "gateway config directory (required)")
+	dir := fs.String("f", "", "gateway config directory (must equal dataDir/config.d)")
 	logLevel := fs.String("log-level", "info", "log level: debug | info | warn | error")
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -39,8 +39,8 @@ func runServe(args []string, stderr io.Writer) int {
 		eprintf(stderr, "error: unexpected positional arguments: %v\n", fs.Args())
 		return 2
 	}
-	if *cfgPath == "" || *dir == "" {
-		eprintln(stderr, "error: -c <esgw.yaml> and -f <config-dir> are both required")
+	if *cfgPath == "" {
+		eprintln(stderr, "error: -c <esgw.yaml> is required")
 		return 2
 	}
 
@@ -56,6 +56,9 @@ func runServe(args []string, stderr io.Writer) int {
 	if err != nil {
 		eprintf(stderr, "error: load esgw.yaml: %v\n", err)
 		return 1
+	}
+	if *dir == "" {
+		*dir = filepath.Join(cfg.DataDir, "config.d")
 	}
 
 	log := slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{Level: level}))

@@ -23,6 +23,12 @@ func defaultConfig() *Config {
 				AckTimeout:   protocol.Duration{Duration: DefaultAckTimeout},
 			},
 		},
+		API: APIConfig{Listen: DefaultAPIListen, Topology: DefaultTopology},
+		State: StateConfig{
+			ReadyInterval: protocol.Duration{Duration: 10 * time.Second}, StatsInterval: protocol.Duration{Duration: 10 * time.Second},
+			ClustersInterval: protocol.Duration{Duration: 15 * time.Second}, ConfigInterval: protocol.Duration{Duration: time.Minute},
+			CertsInterval: protocol.Duration{Duration: 5 * time.Minute},
+		},
 	}
 }
 
@@ -61,6 +67,15 @@ deliver:
     nodeCluster: edge
     adminAddress: 127.0.0.1:9901
     ackTimeout: 30s
+api:
+  listen: 0.0.0.0:8080
+  topology: sidecar
+state:
+  readyInterval: 2s
+  statsInterval: 3s
+  clustersInterval: 4s
+  configInterval: 5s
+  certsInterval: 6s
 `,
 			want: &Config{
 				DataDir: "/tmp/esgw-data",
@@ -73,6 +88,12 @@ deliver:
 						AdminAddress: "127.0.0.1:9901",
 						AckTimeout:   protocol.Duration{Duration: 30 * time.Second},
 					},
+				},
+				API: APIConfig{Listen: "0.0.0.0:8080", Topology: "sidecar"},
+				State: StateConfig{
+					ReadyInterval: protocol.Duration{Duration: 2 * time.Second}, StatsInterval: protocol.Duration{Duration: 3 * time.Second},
+					ClustersInterval: protocol.Duration{Duration: 4 * time.Second}, ConfigInterval: protocol.Duration{Duration: 5 * time.Second},
+					CertsInterval: protocol.Duration{Duration: 6 * time.Second},
 				},
 			},
 		},
@@ -195,6 +216,21 @@ deliver:
 			name:    "ackTimeout 非正值报错",
 			content: "deliver:\n  xds:\n    ackTimeout: -5s\n",
 			wantErr: "positive duration",
+		},
+		{
+			name:    "api listen 必须显式 host",
+			content: "api:\n  listen: :8080\n",
+			wantErr: "host is empty",
+		},
+		{
+			name:    "api topology 非法枚举",
+			content: "api:\n  topology: unknown\n",
+			wantErr: "api.topology",
+		},
+		{
+			name:    "state interval 必须为正",
+			content: "state:\n  statsInterval: -1s\n",
+			wantErr: "state.statsInterval",
 		},
 	}
 

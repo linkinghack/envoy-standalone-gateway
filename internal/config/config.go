@@ -25,6 +25,8 @@ const (
 	DefaultNodeID       = "esgw-node" // 下发层 §2.3
 	DefaultNodeCluster  = "esgw"
 	DefaultAdminAddress = "unix:///var/run/esgw/envoy-admin.sock" // SD5
+	DefaultAPIListen    = "127.0.0.1:8080"
+	DefaultTopology     = "standalone"
 
 	// ModeXDS 为默认下发模式；ModeStatic 为合法枚举，serve 启动即报未实现（S7，SD2）。
 	ModeXDS    = "xds"
@@ -38,6 +40,23 @@ const DefaultAckTimeout = 15 * time.Second
 type Config struct {
 	DataDir string        `json:"dataDir"`
 	Deliver DeliverConfig `json:"deliver"`
+	API     APIConfig     `json:"api"`
+	State   StateConfig   `json:"state"`
+}
+
+// APIConfig controls the same-origin management HTTP server.
+type APIConfig struct {
+	Listen   string `json:"listen"`
+	Topology string `json:"topology"`
+}
+
+// StateConfig controls bounded read-only Envoy admin polling.
+type StateConfig struct {
+	ReadyInterval    protocol.Duration `json:"readyInterval"`
+	StatsInterval    protocol.Duration `json:"statsInterval"`
+	ClustersInterval protocol.Duration `json:"clustersInterval"`
+	ConfigInterval   protocol.Duration `json:"configInterval"`
+	CertsInterval    protocol.Duration `json:"certsInterval"`
 }
 
 // DeliverConfig 对应 deliver.*（下发层 §1.3）。
@@ -136,6 +155,27 @@ func (c *Config) applyDefaults() {
 	if x.AckTimeout.Duration == 0 {
 		x.AckTimeout = protocol.Duration{Duration: DefaultAckTimeout}
 	}
+	if c.API.Listen == "" {
+		c.API.Listen = DefaultAPIListen
+	}
+	if c.API.Topology == "" {
+		c.API.Topology = DefaultTopology
+	}
+	if c.State.ReadyInterval.Duration == 0 {
+		c.State.ReadyInterval = protocol.Duration{Duration: 10 * time.Second}
+	}
+	if c.State.StatsInterval.Duration == 0 {
+		c.State.StatsInterval = protocol.Duration{Duration: 10 * time.Second}
+	}
+	if c.State.ClustersInterval.Duration == 0 {
+		c.State.ClustersInterval = protocol.Duration{Duration: 15 * time.Second}
+	}
+	if c.State.ConfigInterval.Duration == 0 {
+		c.State.ConfigInterval = protocol.Duration{Duration: time.Minute}
+	}
+	if c.State.CertsInterval.Duration == 0 {
+		c.State.CertsInterval = protocol.Duration{Duration: 5 * time.Minute}
+	}
 }
 
 // validate 结构层校验（dev_design 260720-1 §3.1 校验规则 1~4）。
@@ -151,6 +191,43 @@ func (c *Config) validate() error {
 	}
 	if c.Deliver.XDS.AckTimeout.Duration <= 0 {
 		return fmt.Errorf("deliver.xds.ackTimeout must be a positive duration, got %q", c.Deliver.XDS.AckTimeout.String())
+	}
+	if err := validateAPIListen(c.API.Listen); err != nil {
+		return fmt.Errorf("api.listen: %w", err)
+	}
+	switch c.API.Topology {
+	case "standalone", "sidecar", "central":
+	default:
+		return fmt.Errorf("api.topology %q invalid (want standalone | sidecar | central)", c.API.Topology)
+	}
+	for name, interval := range map[string]time.Duration{
+		"readyInterval": c.State.ReadyInterval.Duration, "statsInterval": c.State.StatsInterval.Duration,
+		"clustersInterval": c.State.ClustersInterval.Duration, "configInterval": c.State.ConfigInterval.Duration,
+		"certsInterval": c.State.CertsInterval.Duration,
+	} {
+		if interval <= 0 {
+			return fmt.Errorf("state.%s must be a positive duration", name)
+		}
+	}
+	return nil
+}
+
+func validateAPIListen(listen string) error {
+	host, port, err := net.SplitHostPort(listen)
+	if err != nil {
+		return fmt.Errorf("%q is not a valid host:port address: %v", listen, err)
+	}
+	if err := validatePort(port); err != nil {
+		return err
+	}
+	if host == "" {
+		return errors.New("host is empty; use an explicit address such as 127.0.0.1 or 0.0.0.0")
+	}
+	if host == "localhost" {
+		return nil
+	}
+	if _, err := netip.ParseAddr(host); err != nil {
+		return fmt.Errorf("host %q is not an IP literal", host)
 	}
 	return nil
 }

@@ -7,13 +7,10 @@ import (
 	"testing"
 )
 
-// TestServeUsageError 覆盖用法错误：-c/-f 均必填（exit 2）。
+// TestServeUsageError 覆盖用法错误：-c 必填，-f 可省略（exit 2）。
 func TestServeUsageError(t *testing.T) {
 	if code, _, _ := runCLI(t, "serve"); code != 2 {
 		t.Fatalf("missing flags: exit = %d, want 2", code)
-	}
-	if code, _, _ := runCLI(t, "serve", "-c", "x.yaml"); code != 2 {
-		t.Fatalf("missing -f: exit = %d, want 2", code)
 	}
 	if code, _, _ := runCLI(t, "serve", "-f", "testdata/ok"); code != 2 {
 		t.Fatalf("missing -c: exit = %d, want 2", code)
