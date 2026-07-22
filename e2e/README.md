@@ -25,6 +25,9 @@ L4 场景见 [`l4/`](l4/)（`make e2e-l4`）：使用同一份 L4 golden static
 外部鉴权场景见 [`extauth/`](extauth/)（`make e2e-extauth`）：真实覆盖 HTTP/gRPC
 allow/deny、route disable、HTTP fail-open 与 gRPC fail-closed。
 
+IP 访问控制与本地限流见 [`policy/`](policy/)（`make e2e-policy`）：在全部支持的
+Envoy 版本上覆盖 allow/deny、不可伪造的来源边界以及 clientIP/header 独立动态桶。
+
 默认 `go test ./...` 不触发（工程基线 §3：e2e 依赖 docker）。
 
 ## 关键决策
