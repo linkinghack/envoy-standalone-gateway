@@ -6,8 +6,11 @@ import (
 	"testing"
 	"time"
 
+	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	filelogv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/access_loggers/file/v3"
 	hcmv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
+	tcpproxyv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/tcp_proxy/v3"
+	udpproxyv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/udp/udp_proxy/v3"
 	tlsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
 
 	"github.com/linkinghack/envoy-standalone-gateway/internal/protocol"
@@ -316,20 +319,92 @@ func TestAccessLog(t *testing.T) {
 	})
 }
 
-// TestL4ListenerNotImplemented M0 范围外协议显式报 build 错误（L4/UDP 留 P1）。
-func TestL4ListenerNotImplemented(t *testing.T) {
-	cs := &protocol.ConfigSet{
-		Listeners: []*protocol.Listener{newListener("mysql", 3306, protocol.ProtocolTCP)},
-		Routes:    []*protocol.Route{newForwardRoute("mysql", []string{"mysql"}, "db")},
-		Upstreams: []*protocol.Upstream{newUpstream("db")},
-	}
-	res, errs := buildCS(t, cs)
-	if len(errs) != 1 || errs[0].Stage != StageBuild || !strings.Contains(errs[0].Message, "not implemented in M0") {
-		t.Fatalf("want one not-implemented build error, got:\n%s", formatErrs(errs))
-	}
-	if len(res.listeners) != 0 {
-		t.Fatalf("L4 listener must not be built, got %v", res.listeners)
-	}
+// TestL4Listeners 覆盖 TCP、TLS passthrough 与 UDP 的 Envoy typed filter 映射。
+func TestL4Listeners(t *testing.T) {
+	t.Run("TCP proxy", func(t *testing.T) {
+		cs := &protocol.ConfigSet{
+			Listeners: []*protocol.Listener{newListener("mysql", 3306, protocol.ProtocolTCP)},
+			Routes:    []*protocol.Route{newForwardRoute("mysql", []string{"mysql"}, "db")},
+			Upstreams: []*protocol.Upstream{newUpstream("db")},
+		}
+		res, errs := buildCS(t, cs)
+		assertNoErrs(t, errs)
+		lis := findListener(t, res, "lis/mysql")
+		if len(lis.GetFilterChains()) != 1 || len(lis.GetListenerFilters()) != 0 {
+			t.Fatalf("TCP listener chains=%d listener_filters=%d, want 1/0", len(lis.GetFilterChains()), len(lis.GetListenerFilters()))
+		}
+		filter := lis.GetFilterChains()[0].GetFilters()[0]
+		if filter.GetName() != tcpProxyFilterName {
+			t.Fatalf("filter = %q, want %q", filter.GetName(), tcpProxyFilterName)
+		}
+		proxy := &tcpproxyv3.TcpProxy{}
+		mustUnmarshal(t, filter.GetTypedConfig(), proxy)
+		if proxy.GetStatPrefix() != "lis/mysql" || proxy.GetCluster() != "us/db" {
+			t.Fatalf("tcp proxy = stat_prefix %q cluster %q", proxy.GetStatPrefix(), proxy.GetCluster())
+		}
+		if len(res.routes) != 0 {
+			t.Fatalf("L4 must not generate RouteConfiguration, got %d", len(res.routes))
+		}
+	})
+
+	t.Run("TLS passthrough SNI chains", func(t *testing.T) {
+		cs := &protocol.ConfigSet{
+			Listeners: []*protocol.Listener{newListener("tls", 8443, protocol.ProtocolTLS)},
+			Routes: []*protocol.Route{
+				newForwardRoute("z-route", []string{"tls"}, "z", "Z.EXAMPLE.com", "a.example.com"),
+				newForwardRoute("a-route", []string{"tls"}, "a", "b.example.com"),
+			},
+			Upstreams: []*protocol.Upstream{newUpstream("a"), newUpstream("z")},
+		}
+		res, errs := buildCS(t, cs)
+		assertNoErrs(t, errs)
+		lis := findListener(t, res, "lis/tls")
+		if len(lis.GetListenerFilters()) != 1 || lis.GetListenerFilters()[0].GetName() != tlsInspectorFilterName {
+			t.Fatalf("TLS passthrough listener filters = %v", lis.GetListenerFilters())
+		}
+		chains := lis.GetFilterChains()
+		if len(chains) != 2 {
+			t.Fatalf("chains = %d, want 2", len(chains))
+		}
+		if got := strings.Join(chains[0].GetFilterChainMatch().GetServerNames(), ","); got != "a.example.com,z.example.com" {
+			t.Fatalf("chains[0] server_names = %q", got)
+		}
+		if chains[0].GetFilterChainMatch().GetTransportProtocol() != "tls" || chains[0].GetTransportSocket() != nil {
+			t.Fatal("TLS passthrough must match inspected TLS without terminating it")
+		}
+		proxy := &tcpproxyv3.TcpProxy{}
+		mustUnmarshal(t, chains[0].GetFilters()[0].GetTypedConfig(), proxy)
+		if proxy.GetCluster() != "us/z" {
+			t.Fatalf("chains[0] cluster = %q, want us/z", proxy.GetCluster())
+		}
+	})
+
+	t.Run("UDP proxy", func(t *testing.T) {
+		cs := &protocol.ConfigSet{
+			Listeners: []*protocol.Listener{newListener("dns", 5353, protocol.ProtocolUDP)},
+			Routes:    []*protocol.Route{newForwardRoute("dns", []string{"dns"}, "resolver")},
+			Upstreams: []*protocol.Upstream{newUpstream("resolver")},
+		}
+		res, errs := buildCS(t, cs)
+		assertNoErrs(t, errs)
+		lis := findListener(t, res, "lis/dns")
+		if lis.GetAddress().GetSocketAddress().GetProtocol() != corev3.SocketAddress_UDP {
+			t.Fatalf("socket protocol = %v, want UDP", lis.GetAddress().GetSocketAddress().GetProtocol())
+		}
+		if lis.GetUdpListenerConfig() == nil || len(lis.GetFilterChains()) != 0 || len(lis.GetListenerFilters()) != 1 {
+			t.Fatalf("UDP listener config/chains/filters = %v/%d/%d", lis.GetUdpListenerConfig(), len(lis.GetFilterChains()), len(lis.GetListenerFilters()))
+		}
+		filter := lis.GetListenerFilters()[0]
+		if filter.GetName() != udpProxyFilterName {
+			t.Fatalf("filter = %q, want %q", filter.GetName(), udpProxyFilterName)
+		}
+		proxy := &udpproxyv3.UdpProxyConfig{}
+		mustUnmarshal(t, filter.GetTypedConfig(), proxy)
+		cluster := udpProxyCluster(filter)
+		if proxy.GetStatPrefix() != "lis/dns" || cluster != "us/resolver" {
+			t.Fatalf("udp proxy = stat_prefix %q cluster %q", proxy.GetStatPrefix(), cluster)
+		}
+	})
 }
 
 // ptr 返回 T 的指针（测试辅助）。

@@ -39,16 +39,22 @@ func build(cs *protocol.ConfigSet, lk *linked, extract serverNameExtractor) (*bu
 	var errs []CompileError
 
 	for _, l := range sortedListeners(cs.Listeners) {
-		if !isHTTPProtocol(l.Spec.Protocol) {
-			errs = append(errs, buildError(l.Origin, protocol.KindListener, l.Metadata.Name, "spec.protocol",
-				"protocol %s is not implemented in M0 (L4/UDP listeners are P1)", l.Spec.Protocol))
-			continue
+		var (
+			lis   *listenerv3.Listener
+			rc    *routev3.RouteConfiguration
+			lerrs []CompileError
+		)
+		if isHTTPProtocol(l.Spec.Protocol) {
+			lis, rc, lerrs = ctx.buildHTTPListener(l)
+		} else {
+			lis, lerrs = ctx.buildL4Listener(l)
 		}
-		lis, rc, lerrs := ctx.buildHTTPListener(l)
 		errs = append(errs, lerrs...)
 		if lis != nil {
 			res.listeners = append(res.listeners, lis)
-			res.routes = append(res.routes, rc)
+			if rc != nil {
+				res.routes = append(res.routes, rc)
+			}
 		}
 	}
 	for _, u := range sortedUpstreams(cs.Upstreams) {

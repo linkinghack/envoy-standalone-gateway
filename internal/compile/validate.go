@@ -3,8 +3,11 @@ package compile
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	routev3 "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
+	tcpproxyv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/tcp_proxy/v3"
+	udpproxyv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/udp/udp_proxy/v3"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/reflect/protoregistry"
@@ -149,6 +152,12 @@ func checkCrossRefs(out *ir.IR) []CompileError {
 		key := ir.ResourceKey{Kind: ir.ResourceListener, Name: name}
 		for _, chain := range lis.GetFilterChains() {
 			for _, f := range chain.GetFilters() {
+				if cluster := tcpProxyCluster(f); cluster != "" {
+					if _, ok := out.Clusters[cluster]; !ok {
+						errs = append(errs, validateError(out, key,
+							"TCP proxy reference %q has no matching Cluster", cluster))
+					}
+				}
 				hcm := decodeHCM(f)
 				if hcm == nil {
 					continue
@@ -181,6 +190,14 @@ func checkCrossRefs(out *ir.IR) []CompileError {
 				}
 			}
 		}
+		for _, f := range lis.GetListenerFilters() {
+			if cluster := udpProxyCluster(f); cluster != "" {
+				if _, ok := out.Clusters[cluster]; !ok {
+					errs = append(errs, validateError(out, key,
+						"UDP proxy reference %q has no matching Cluster", cluster))
+				}
+			}
+		}
 	}
 
 	for _, name := range sortedKeysOf(out.Clusters) {
@@ -200,6 +217,37 @@ func checkCrossRefs(out *ir.IR) []CompileError {
 			ir.ResourceKey{Kind: ir.ResourceRoute, Name: name})...)
 	}
 	return errs
+}
+
+type typedConfigCarrier interface {
+	GetTypedConfig() *anypb.Any
+}
+
+func tcpProxyCluster(f typedConfigCarrier) string {
+	cfg := f.GetTypedConfig()
+	if cfg == nil || !strings.HasSuffix(cfg.GetTypeUrl(), "TcpProxy") {
+		return ""
+	}
+	proxy := &tcpproxyv3.TcpProxy{}
+	if err := cfg.UnmarshalTo(proxy); err != nil {
+		return ""
+	}
+	return proxy.GetCluster()
+}
+
+func udpProxyCluster(f typedConfigCarrier) string {
+	cfg := f.GetTypedConfig()
+	if cfg == nil || !strings.HasSuffix(cfg.GetTypeUrl(), "UdpProxyConfig") {
+		return ""
+	}
+	proxy := &udpproxyv3.UdpProxyConfig{}
+	if err := cfg.UnmarshalTo(proxy); err != nil {
+		return ""
+	}
+	// The matcher replacement is still marked work-in-progress by Envoy. The
+	// deprecated single-cluster route remains the stable common API across our
+	// 1.37-1.39 compatibility matrix.
+	return proxy.GetCluster() //nolint:staticcheck
 }
 
 // checkRouteConfigRefs 校验 RouteConfiguration 内全部 route 的 cluster 引用闭合。

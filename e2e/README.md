@@ -19,6 +19,9 @@ make e2e        # 或 e2e/run.sh
 ADS 模式（esgw serve + 接入 bootstrap）的对应 e2e 见 [`xds/`](xds/)
 （`make e2e-xds`，Sprint 260720 T5）。
 
+L4 场景见 [`l4/`](l4/)（`make e2e-l4`）：使用同一份 L4 golden static
+产物验证 TCP、两条 TLS passthrough SNI 分流、未知 SNI 拒绝和 UDP 回包。
+
 默认 `go test ./...` 不触发（工程基线 §3：e2e 依赖 docker）。
 
 ## 关键决策

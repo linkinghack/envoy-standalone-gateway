@@ -29,6 +29,8 @@ func secretResourceName(listener string, n int) string {
 // HTTP filter 名同时是 typed_per_filter_config 的 key（编译层 §3 策略表）。
 const (
 	hcmFilterName            = "envoy.filters.network.http_connection_manager"
+	tcpProxyFilterName       = "envoy.filters.network.tcp_proxy"
+	udpProxyFilterName       = "envoy.filters.udp_listener.udp_proxy"
 	corsFilterName           = "envoy.filters.http.cors"
 	jwtAuthnFilterName       = "envoy.filters.http.jwt_authn"
 	localRateLimitFilterName = "envoy.filters.http.local_ratelimit"

@@ -16,9 +16,13 @@
 
 - 三种 L4 协议合法配置生成 PGV 合法 Envoy v3 资源；
 - HTTP rule/Policy 与 L4 forward 的所有非法混用均在 link/build 阶段定位；
-- TLS SNI 重叠、兜底、确定性顺序有直接测试；
+- TLS SNI 缺失、重叠、确定性顺序有直接测试；
 - golden 在 Envoy 1.37.5、1.38.3、1.39.0 全部 validate。
 
 ## 进展
 
-- 进行中：已冻结映射与冲突语义，下一步从现有 build/link 分支补实现。
+- 已完成：
+  - TCP/TLS passthrough/UDP Builder、L4 link 约束和 F6 typed filter cluster 引用闭合；
+  - `testdata/l4` static/xDS golden，Envoy 1.37.5、1.38.3、1.39.0 共 21 次 static validate 全通过；
+  - `e2e/l4/run.sh` 真实验证 TCP、两条 TLS SNI 分流、未知 SNI 拒绝和 UDP 回包；
+  - `go test ./...`、`go vet ./...`、golangci-lint 与 compile/golden race 通过。

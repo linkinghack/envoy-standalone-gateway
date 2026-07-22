@@ -1,0 +1,79 @@
+apiVersion: esgw/v1alpha1
+kind: Listener
+metadata: {name: mysql}
+spec:
+  address: 127.0.0.1
+  port: 13306
+  protocol: TCP
+---
+apiVersion: esgw/v1alpha1
+kind: Listener
+metadata: {name: tls-passthrough}
+spec:
+  address: 127.0.0.1
+  port: 18443
+  protocol: TLS
+---
+apiVersion: esgw/v1alpha1
+kind: Listener
+metadata: {name: dns}
+spec:
+  address: 127.0.0.1
+  port: 15353
+  protocol: UDP
+---
+apiVersion: esgw/v1alpha1
+kind: Route
+metadata: {name: mysql}
+spec:
+  listeners: [mysql]
+  forward: {upstream: database}
+---
+apiVersion: esgw/v1alpha1
+kind: Route
+metadata: {name: tls-api}
+spec:
+  listeners: [tls-passthrough]
+  forward:
+    upstream: api-tls
+    sniHosts: [api.example.com]
+---
+apiVersion: esgw/v1alpha1
+kind: Route
+metadata: {name: tls-web}
+spec:
+  listeners: [tls-passthrough]
+  forward:
+    upstream: web-tls
+    sniHosts: [www.example.com, "*.example.net"]
+---
+apiVersion: esgw/v1alpha1
+kind: Route
+metadata: {name: dns}
+spec:
+  listeners: [dns]
+  forward: {upstream: resolver}
+---
+apiVersion: esgw/v1alpha1
+kind: Upstream
+metadata: {name: database}
+spec:
+  endpoints: [{address: 127.0.0.1, port: 23306}]
+---
+apiVersion: esgw/v1alpha1
+kind: Upstream
+metadata: {name: api-tls}
+spec:
+  endpoints: [{address: 127.0.0.1, port: 24443}]
+---
+apiVersion: esgw/v1alpha1
+kind: Upstream
+metadata: {name: web-tls}
+spec:
+  endpoints: [{address: 127.0.0.1, port: 25443}]
+---
+apiVersion: esgw/v1alpha1
+kind: Upstream
+metadata: {name: resolver}
+spec:
+  endpoints: [{address: 127.0.0.1, port: 25353}]

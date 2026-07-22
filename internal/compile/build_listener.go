@@ -58,7 +58,6 @@ func defaultServerNameExtractor(certFile string) ([]string, error) {
 }
 
 // buildHTTPListener 构建一个 HTTP/HTTPS Listener 及其 RouteConfiguration（编译层 §3 F3）。
-// L4（TCP/TLS/UDP）不在 M0 范围（P1），由 build() 统一报错。
 func (ctx *buildContext) buildHTTPListener(l *protocol.Listener) (*listenerv3.Listener, *routev3.RouteConfiguration, []CompileError) {
 	var errs []CompileError
 	name := l.Metadata.Name

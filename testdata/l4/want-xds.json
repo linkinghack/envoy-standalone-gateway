@@ -1,0 +1,227 @@
+{
+  "clusters": {
+    "us/api-tls": {
+      "connect_timeout": "5s",
+      "eds_cluster_config": {
+        "eds_config": {
+          "ads": {}
+        }
+      },
+      "name": "us/api-tls",
+      "type": "EDS"
+    },
+    "us/database": {
+      "connect_timeout": "5s",
+      "eds_cluster_config": {
+        "eds_config": {
+          "ads": {}
+        }
+      },
+      "name": "us/database",
+      "type": "EDS"
+    },
+    "us/resolver": {
+      "connect_timeout": "5s",
+      "eds_cluster_config": {
+        "eds_config": {
+          "ads": {}
+        }
+      },
+      "name": "us/resolver",
+      "type": "EDS"
+    },
+    "us/web-tls": {
+      "connect_timeout": "5s",
+      "eds_cluster_config": {
+        "eds_config": {
+          "ads": {}
+        }
+      },
+      "name": "us/web-tls",
+      "type": "EDS"
+    }
+  },
+  "endpoints": {
+    "us/api-tls": {
+      "cluster_name": "us/api-tls",
+      "endpoints": [
+        {
+          "lb_endpoints": [
+            {
+              "endpoint": {
+                "address": {
+                  "socket_address": {
+                    "address": "127.0.0.1",
+                    "port_value": 24443
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "us/database": {
+      "cluster_name": "us/database",
+      "endpoints": [
+        {
+          "lb_endpoints": [
+            {
+              "endpoint": {
+                "address": {
+                  "socket_address": {
+                    "address": "127.0.0.1",
+                    "port_value": 23306
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "us/resolver": {
+      "cluster_name": "us/resolver",
+      "endpoints": [
+        {
+          "lb_endpoints": [
+            {
+              "endpoint": {
+                "address": {
+                  "socket_address": {
+                    "address": "127.0.0.1",
+                    "port_value": 25353
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "us/web-tls": {
+      "cluster_name": "us/web-tls",
+      "endpoints": [
+        {
+          "lb_endpoints": [
+            {
+              "endpoint": {
+                "address": {
+                  "socket_address": {
+                    "address": "127.0.0.1",
+                    "port_value": 25443
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "listeners": {
+    "lis/dns": {
+      "address": {
+        "socket_address": {
+          "address": "127.0.0.1",
+          "port_value": 15353,
+          "protocol": "UDP"
+        }
+      },
+      "listener_filters": [
+        {
+          "name": "envoy.filters.udp_listener.udp_proxy",
+          "typed_config": {
+            "@type": "type.googleapis.com/envoy.extensions.filters.udp.udp_proxy.v3.UdpProxyConfig",
+            "cluster": "us/resolver",
+            "stat_prefix": "lis/dns"
+          }
+        }
+      ],
+      "name": "lis/dns",
+      "udp_listener_config": {}
+    },
+    "lis/mysql": {
+      "address": {
+        "socket_address": {
+          "address": "127.0.0.1",
+          "port_value": 13306
+        }
+      },
+      "filter_chains": [
+        {
+          "filters": [
+            {
+              "name": "envoy.filters.network.tcp_proxy",
+              "typed_config": {
+                "@type": "type.googleapis.com/envoy.extensions.filters.network.tcp_proxy.v3.TcpProxy",
+                "cluster": "us/database",
+                "stat_prefix": "lis/mysql"
+              }
+            }
+          ]
+        }
+      ],
+      "name": "lis/mysql"
+    },
+    "lis/tls-passthrough": {
+      "address": {
+        "socket_address": {
+          "address": "127.0.0.1",
+          "port_value": 18443
+        }
+      },
+      "filter_chains": [
+        {
+          "filter_chain_match": {
+            "server_names": [
+              "*.example.net",
+              "www.example.com"
+            ],
+            "transport_protocol": "tls"
+          },
+          "filters": [
+            {
+              "name": "envoy.filters.network.tcp_proxy",
+              "typed_config": {
+                "@type": "type.googleapis.com/envoy.extensions.filters.network.tcp_proxy.v3.TcpProxy",
+                "cluster": "us/web-tls",
+                "stat_prefix": "lis/tls-passthrough"
+              }
+            }
+          ]
+        },
+        {
+          "filter_chain_match": {
+            "server_names": [
+              "api.example.com"
+            ],
+            "transport_protocol": "tls"
+          },
+          "filters": [
+            {
+              "name": "envoy.filters.network.tcp_proxy",
+              "typed_config": {
+                "@type": "type.googleapis.com/envoy.extensions.filters.network.tcp_proxy.v3.TcpProxy",
+                "cluster": "us/api-tls",
+                "stat_prefix": "lis/tls-passthrough"
+              }
+            }
+          ]
+        }
+      ],
+      "listener_filters": [
+        {
+          "name": "envoy.filters.listener.tls_inspector",
+          "typed_config": {
+            "@type": "type.googleapis.com/envoy.extensions.filters.listener.tls_inspector.v3.TlsInspector"
+          }
+        }
+      ],
+      "name": "lis/tls-passthrough"
+    }
+  },
+  "routes": {},
+  "secrets": {},
+  "version": "e2f9152ddd1c"
+}
