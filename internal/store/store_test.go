@@ -130,3 +130,30 @@ func TestPublishRunLifecycle(t *testing.T) {
 		t.Fatalf("active=%+v err=%v", active, err)
 	}
 }
+
+func TestListAndLatestVersions(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	s, err := Open(filepath.Join(t.TempDir(), "esgw.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	for i, state := range []string{"effective", "failed", "effective"} {
+		seq, err := s.NextVersionSeq(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := s.InsertVersion(ctx, Version{Seq: seq, Author: "admin", Mode: "xds", IRVersion: "ir", State: state, Message: string(rune('a' + i))}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	versions, total, err := s.ListVersions(ctx, 2, 0)
+	if err != nil || total != 3 || len(versions) != 2 || versions[0].Seq != 3 || versions[1].Seq != 2 {
+		t.Fatalf("versions = %+v total=%d err=%v", versions, total, err)
+	}
+	latest, err := s.LatestVersion(ctx, "effective")
+	if err != nil || latest.Seq != 3 {
+		t.Fatalf("latest effective = %+v, %v", latest, err)
+	}
+}

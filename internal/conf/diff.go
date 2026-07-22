@@ -36,6 +36,40 @@ func DiffSnapshots(dataDir string, from, to int64) (SnapshotDiff, error) {
 	if err != nil {
 		return SnapshotDiff{}, err
 	}
+	return diffFileMaps(from, to, left, right), nil
+}
+
+// DiffDraftAgainstSnapshot compares an immutable version with the current
+// filesystem draft. A zero snapshot sequence treats the base as empty.
+func DiffDraftAgainstSnapshot(dataDir string, from int64) (SnapshotDiff, error) {
+	left := map[string]string{}
+	var err error
+	if from > 0 {
+		left, err = snapshotFiles(dataDir, from)
+		if err != nil {
+			return SnapshotDiff{}, err
+		}
+	}
+	right := map[string]string{}
+	files, err := sourceFiles(dataDir)
+	if err != nil {
+		return SnapshotDiff{}, err
+	}
+	for _, file := range files {
+		rel, err := filepath.Rel(dataDir, file)
+		if err != nil {
+			return SnapshotDiff{}, err
+		}
+		content, err := os.ReadFile(file)
+		if err != nil {
+			return SnapshotDiff{}, err
+		}
+		right[filepath.ToSlash(rel)] = normalizeText(string(content))
+	}
+	return diffFileMaps(from, 0, left, right), nil
+}
+
+func diffFileMaps(from, to int64, left, right map[string]string) SnapshotDiff {
 	keys := make(map[string]struct{}, len(left)+len(right))
 	for k := range left {
 		keys[k] = struct{}{}
@@ -63,7 +97,7 @@ func DiffSnapshots(dataDir string, from, to int64) (SnapshotDiff, error) {
 			out.Files = append(out.Files, FileDiff{Path: name, Status: "changed", Patch: unifiedPatch(splitLines(a), splitLines(b))})
 		}
 	}
-	return out, nil
+	return out
 }
 
 func snapshotFiles(dataDir string, seq int64) (map[string]string, error) {
