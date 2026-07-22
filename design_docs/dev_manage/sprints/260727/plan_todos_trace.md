@@ -4,7 +4,7 @@
 |---|---|---|---|
 | T1 | L4 语义、TCP/TLS/UDP Builder 与 golden | 已完成 | unit + 3-version validate |
 | T2 | extAuth HTTP/gRPC 编译与冲突模型 | 已完成 | unit + auth service traffic |
-| T3 | IPAccess 与动态 key 本地限流 | 待开始 | policy unit + isolated quota e2e |
+| T3 | IPAccess 与动态 key 本地限流 | 进行中 | policy unit + isolated quota e2e |
 | T4 | downstream mTLS、熔断与协议校验收紧 | 待开始 | TLS/circuit tests + traffic |
 | T5 | schema/spec/examples 独立发行与 conformance | 待开始 | clean-diff + external runner |
 | T6 | static/xDS 真实矩阵、文档与 Sprint 收口 | 待开始 | full gates + A1–A8 |

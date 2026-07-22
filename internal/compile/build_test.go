@@ -148,7 +148,7 @@ func TestS2Build(t *testing.T) {
 	lis := findListener(t, res, "lis/https")
 	hcm := hcmOf(t, lis.GetFilterChains()[0])
 	names := httpFilterNames(t, hcm)
-	want := []string{corsFilterName, jwtAuthnFilterName, localRateLimitFilterName, routerFilterName}
+	want := []string{rbacFilterName, corsFilterName, jwtAuthnFilterName, localRateLimitFilterName, routerFilterName}
 	if strings.Join(names, ",") != strings.Join(want, ",") {
 		t.Fatalf("filter chain = %v, want %v", names, want)
 	}

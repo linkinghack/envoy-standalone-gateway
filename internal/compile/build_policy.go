@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"net/netip"
 	"net/url"
 	"regexp"
 	"sort"
@@ -13,11 +14,13 @@ import (
 	clusterv3 "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	endpointv3 "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
+	rbacconfigv3 "github.com/envoyproxy/go-control-plane/envoy/config/rbac/v3"
 	routev3 "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 	corsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/cors/v3"
 	extauthzv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_authz/v3"
 	jwtv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/jwt_authn/v3"
 	localratelimitv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/local_ratelimit/v3"
+	rbacv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/rbac/v3"
 	routerv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/router/v3"
 	hcmv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
 	matcherv3 "github.com/envoyproxy/go-control-plane/envoy/type/matcher/v3"
@@ -40,7 +43,8 @@ type effectivePolicies struct {
 	rateLimit      *protocol.RateLimitPolicy
 	jwt            *protocol.JWTPolicy
 	extAuth        *protocol.ExtAuthPolicy
-	unsupported    []string // 尚未实现的策略类型（ipAccess/basicAuth），按出现序
+	ipAccess       *protocol.IPAccessPolicy
+	unsupported    []string // 尚未实现的策略类型（basicAuth），按出现序
 }
 
 // normalizePolicies 按就近覆盖合并四级 policies（levels 调用顺序须为
@@ -69,8 +73,10 @@ func normalizePolicies(lk *linked, levels ...[]protocol.PolicyAttachment) effect
 				eff.jwt = spec.JWT
 			case spec.ExtAuth != nil:
 				eff.extAuth = spec.ExtAuth
+			case spec.IPAccess != nil:
+				eff.ipAccess = spec.IPAccess
 			default:
-				// ipAccess/basicAuth 尚未实现，显式报错而非静默丢弃。
+				// basicAuth 尚未实现，显式报错而非静默丢弃。
 				eff.unsupported = append(eff.unsupported, policyTypeKey(spec))
 			}
 		}
@@ -89,6 +95,10 @@ func normalizePolicies(lk *linked, levels ...[]protocol.PolicyAttachment) effect
 // 后续加入时无需挪动既有 filter。所有策略 filter 常驻链上、默认 pass-through，
 // 实际生效范围由 per-rule typed_per_filter_config 控制，避免 filter chain 结构抖动。
 func httpFilters(jwtAsm *jwtAssembly, extAuthAsm *extAuthAssembly) ([]*hcmv3.HttpFilter, []CompileError) {
+	rbacCfg, err := marshalAny(&rbacv3.RBAC{})
+	if err != nil {
+		return nil, []CompileError{{Stage: StageBuild, Severity: SeverityError, Message: err.Error()}}
+	}
 	corsCfg, err := marshalAny(&corsv3.Cors{})
 	if err != nil {
 		return nil, []CompileError{{Stage: StageBuild, Severity: SeverityError, Message: err.Error()}}
@@ -113,6 +123,7 @@ func httpFilters(jwtAsm *jwtAssembly, extAuthAsm *extAuthAssembly) ([]*hcmv3.Htt
 		}
 	}
 	filters := []*hcmv3.HttpFilter{
+		mk(rbacFilterName, rbacCfg),
 		mk(corsFilterName, corsCfg),
 		mk(jwtAuthnFilterName, jwtCfg),
 	}
@@ -147,6 +158,10 @@ func (ctx *buildContext) typedPerFilterConfig(eff effectivePolicies, jwtAsm *jwt
 		cfg, err := marshalAny(buildCorsPolicy(eff.cors))
 		put(corsFilterName, cfg, err)
 	}
+	if eff.ipAccess != nil {
+		cfg, err := marshalAny(buildIPAccess(eff.ipAccess))
+		put(rbacFilterName, cfg, err)
+	}
 	if eff.rateLimit != nil {
 		cfg, err := marshalAny(buildLocalRateLimit(eff.rateLimit))
 		put(localRateLimitFilterName, cfg, err)
@@ -180,6 +195,68 @@ func (ctx *buildContext) typedPerFilterConfig(eff effectivePolicies, jwtAsm *jwt
 		return nil, errs
 	}
 	return tpc, errs
+}
+
+func buildIPAccess(p *protocol.IPAccessPolicy) *rbacv3.RBACPerRoute {
+	principals := []*rbacconfigv3.Principal{}
+	allow := cidrPrincipals(p.Allow)
+	if len(allow) == 0 {
+		principals = append(principals, &rbacconfigv3.Principal{
+			Identifier: &rbacconfigv3.Principal_Any{Any: true},
+		})
+	} else {
+		principals = append(principals, orPrincipal(allow))
+	}
+	if deny := cidrPrincipals(p.Deny); len(deny) > 0 {
+		principals = append(principals, &rbacconfigv3.Principal{
+			Identifier: &rbacconfigv3.Principal_NotId{NotId: orPrincipal(deny)},
+		})
+	}
+	principal := principals[0]
+	if len(principals) > 1 {
+		principal = &rbacconfigv3.Principal{
+			Identifier: &rbacconfigv3.Principal_AndIds{AndIds: &rbacconfigv3.Principal_Set{Ids: principals}},
+		}
+	}
+	return &rbacv3.RBACPerRoute{Rbac: &rbacv3.RBAC{Rules: &rbacconfigv3.RBAC{
+		Action: rbacconfigv3.RBAC_ALLOW,
+		Policies: map[string]*rbacconfigv3.Policy{"ip-access": {
+			Permissions: []*rbacconfigv3.Permission{{Rule: &rbacconfigv3.Permission_Any{Any: true}}},
+			Principals:  []*rbacconfigv3.Principal{principal},
+		}},
+	}}}
+}
+
+func cidrPrincipals(raw []string) []*rbacconfigv3.Principal {
+	prefixes := make([]netip.Prefix, 0, len(raw))
+	seen := map[string]bool{}
+	for _, value := range raw {
+		prefix := netip.MustParsePrefix(value).Masked()
+		key := prefix.String()
+		if !seen[key] {
+			seen[key] = true
+			prefixes = append(prefixes, prefix)
+		}
+	}
+	sort.Slice(prefixes, func(i, j int) bool { return prefixes[i].String() < prefixes[j].String() })
+	out := make([]*rbacconfigv3.Principal, 0, len(prefixes))
+	for _, prefix := range prefixes {
+		out = append(out, &rbacconfigv3.Principal{Identifier: &rbacconfigv3.Principal_RemoteIp{
+			RemoteIp: &corev3.CidrRange{
+				AddressPrefix: prefix.Addr().String(), PrefixLen: wrapperspb.UInt32(uint32(prefix.Bits())),
+			},
+		}})
+	}
+	return out
+}
+
+func orPrincipal(ids []*rbacconfigv3.Principal) *rbacconfigv3.Principal {
+	if len(ids) == 1 {
+		return ids[0]
+	}
+	return &rbacconfigv3.Principal{
+		Identifier: &rbacconfigv3.Principal_OrIds{OrIds: &rbacconfigv3.Principal_Set{Ids: ids}},
+	}
 }
 
 // applyHeaderModifier 把 headerModifier 策略落到 route 层字段（不占 filter，编译层 §3 策略表）。

@@ -10,4 +10,4 @@
 
 ## 进展
 
-- 待开始。
+- 进行中：完成 IPAccess RBAC per-route Builder（allow 白名单、deny 优先、CIDR mask/排序/去重）与单测；下一步完成真实来源流量和动态 rate-limit descriptor 三版本 spike。

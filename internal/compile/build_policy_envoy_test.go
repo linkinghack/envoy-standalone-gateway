@@ -7,11 +7,13 @@ import (
 
 	clusterv3 "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
+	rbacconfigv3 "github.com/envoyproxy/go-control-plane/envoy/config/rbac/v3"
 	routev3 "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 	corsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/cors/v3"
 	extauthzv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_authz/v3"
 	jwtv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/jwt_authn/v3"
 	localratelimitv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/local_ratelimit/v3"
+	rbacv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/rbac/v3"
 	hcmv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
 
 	"github.com/linkinghack/envoy-standalone-gateway/internal/protocol"
@@ -81,7 +83,7 @@ func TestHTTPFilterChain(t *testing.T) {
 	cs := policyCS(nil, nil, nil, nil)
 	_, hcm := buildPolicyRoute(t, cs)
 	names := httpFilterNames(t, hcm)
-	want := []string{corsFilterName, jwtAuthnFilterName, localRateLimitFilterName, routerFilterName}
+	want := []string{rbacFilterName, corsFilterName, jwtAuthnFilterName, localRateLimitFilterName, routerFilterName}
 	if strings.Join(names, ",") != strings.Join(want, ",") {
 		t.Fatalf("filter chain = %v, want %v（cors → jwt_authn → local_ratelimit → router）", names, want)
 	}
@@ -185,6 +187,31 @@ func TestCORSWildcardAll(t *testing.T) {
 	mustUnmarshal(t, route.GetTypedPerFilterConfig()[corsFilterName], c)
 	if len(c.GetAllowOriginStringMatch()) != 0 {
 		t.Fatalf("matchers = %v, want empty（\"*\" = 放行全部源）", c.GetAllowOriginStringMatch())
+	}
+}
+
+func TestIPAccessPerRoute(t *testing.T) {
+	spec := protocol.PolicySpec{IPAccess: &protocol.IPAccessPolicy{
+		Allow: []string{"10.1.2.3/8", "10.0.0.0/8"},
+		Deny:  []string{"10.9.0.0/16"},
+	}}
+	cs := policyCS(nil, nil, []protocol.PolicyAttachment{{Inline: &spec}}, nil)
+	route, hcm := buildPolicyRoute(t, cs)
+	if httpFilterNames(t, hcm)[0] != rbacFilterName {
+		t.Fatalf("RBAC must be first HTTP filter: %v", httpFilterNames(t, hcm))
+	}
+	perRoute := &rbacv3.RBACPerRoute{}
+	mustUnmarshal(t, route.GetTypedPerFilterConfig()[rbacFilterName], perRoute)
+	rules := perRoute.GetRbac().GetRules()
+	if rules.GetAction() != rbacconfigv3.RBAC_ALLOW {
+		t.Fatalf("RBAC action = %v, want ALLOW", rules.GetAction())
+	}
+	principal := rules.GetPolicies()["ip-access"].GetPrincipals()[0]
+	ids := principal.GetAndIds().GetIds()
+	if len(ids) != 2 || ids[0].GetRemoteIp().GetAddressPrefix() != "10.0.0.0" ||
+		ids[0].GetRemoteIp().GetPrefixLen().GetValue() != 8 ||
+		ids[1].GetNotId().GetRemoteIp().GetAddressPrefix() != "10.9.0.0" {
+		t.Fatalf("IPAccess principal = %+v", principal)
 	}
 }
 
@@ -329,7 +356,7 @@ func TestExtAuthGRPC(t *testing.T) {
 	res, errs := buildCS(t, cs)
 	assertNoErrs(t, errs)
 	hcm := hcmOf(t, findListener(t, res, "lis/web").GetFilterChains()[0])
-	wantOrder := []string{corsFilterName, jwtAuthnFilterName, extAuthzFilterName, localRateLimitFilterName, routerFilterName}
+	wantOrder := []string{rbacFilterName, corsFilterName, jwtAuthnFilterName, extAuthzFilterName, localRateLimitFilterName, routerFilterName}
 	if got := strings.Join(httpFilterNames(t, hcm), ","); got != strings.Join(wantOrder, ",") {
 		t.Fatalf("filter order = %s, want %v", got, wantOrder)
 	}
