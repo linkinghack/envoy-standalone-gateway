@@ -174,3 +174,11 @@ const RateLimitKeyClientIP = "clientIP"
 
 // RateLimitKeyHeaderPrefix 是 "header:<name>" 形态的前缀。
 const RateLimitKeyHeaderPrefix = "header:"
+
+// 动态限流桶缓存的默认值与合法边界。上限避免高基数 header 或来源地址造成
+// 无界内存占用；缓存满时 Envoy 按 LRU 淘汰旧桶。
+const (
+	RateLimitDefaultMaxKeys int32 = 10_000
+	RateLimitMinMaxKeys     int32 = 1
+	RateLimitMaxMaxKeys     int32 = 100_000
+)

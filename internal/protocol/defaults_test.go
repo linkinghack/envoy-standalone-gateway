@@ -62,11 +62,15 @@ func TestApplyDefaultsS2(t *testing.T) {
 	}
 	ApplyDefaults(cs)
 
-	// 内联 rateLimit：burst 默认 = requests，key 默认 clientIP（S2 显式给了 key）。
+	// 内联 rateLimit：burst 默认 = requests，key 默认 clientIP（S2 显式给了 key），
+	// 动态桶缓存默认 10000。
 	login := cs.Routes[0].Spec.Rules[0]
 	rl := login.Policies[1].Inline.RateLimit
 	if rl.Burst == nil || *rl.Burst != 10 {
 		t.Fatalf("inline rateLimit burst: %+v", rl)
+	}
+	if rl.MaxKeys == nil || *rl.MaxKeys != RateLimitDefaultMaxKeys {
+		t.Fatalf("inline rateLimit maxKeys: %+v", rl)
 	}
 
 	// 显式 timeout 不被覆盖。

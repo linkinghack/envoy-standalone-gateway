@@ -61,8 +61,9 @@ type CORSPolicy struct {
 type RateLimitPolicy struct {
 	Requests int32         `json:"requests"`
 	Unit     RateLimitUnit `json:"unit"`
-	Burst    *int32        `json:"burst,omitempty"` // 默认 = requests
-	Key      string        `json:"key,omitempty"`   // clientIP(默认) | header:<name> —— 限流维度
+	Burst    *int32        `json:"burst,omitempty"`   // 默认 = requests
+	Key      string        `json:"key,omitempty"`     // clientIP(默认) | header:<name> —— 限流维度
+	MaxKeys  *int32        `json:"maxKeys,omitempty"` // 动态 key 桶 LRU 容量，默认 10000
 }
 
 // JWTPolicy 是 JWT 校验（P1）。
@@ -174,8 +175,17 @@ func (s *PolicySpec) validate(field string) error {
 		if !r.Unit.Valid() {
 			return fmt.Errorf("%s.rateLimit.unit: invalid value %q (want second | minute | hour)", field, r.Unit)
 		}
-		if r.Key != "" && r.Key != RateLimitKeyClientIP && !strings.HasPrefix(r.Key, RateLimitKeyHeaderPrefix) {
-			return fmt.Errorf("%s.rateLimit.key: invalid value %q (want clientIP | header:<name>)", field, r.Key)
+		if r.Burst != nil && *r.Burst <= 0 {
+			return fmt.Errorf("%s.rateLimit.burst: must be > 0", field)
+		}
+		if r.Key != "" && r.Key != RateLimitKeyClientIP {
+			header, ok := strings.CutPrefix(r.Key, RateLimitKeyHeaderPrefix)
+			if !ok || !headerNameRE.MatchString(header) {
+				return fmt.Errorf("%s.rateLimit.key: invalid value %q (want clientIP | header:<valid HTTP field name>)", field, r.Key)
+			}
+		}
+		if r.MaxKeys != nil && (*r.MaxKeys < RateLimitMinMaxKeys || *r.MaxKeys > RateLimitMaxMaxKeys) {
+			return fmt.Errorf("%s.rateLimit.maxKeys: must be between %d and %d", field, RateLimitMinMaxKeys, RateLimitMaxMaxKeys)
 		}
 	}
 	if j := s.JWT; j != nil && j.JWKS != nil {

@@ -15,6 +15,10 @@ const NamePattern = `^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`
 
 var nameRE = regexp.MustCompile(NamePattern)
 
+// headerNameRE implements the RFC 9110 field-name token character set. Envoy
+// rejects invalid names, so the protocol reports them before F4 rendering.
+var headerNameRE = regexp.MustCompile(`^[!#$%&'*+\-.^_` + "`" + `|~0-9A-Za-z]+$`)
+
 // Kind 是协议对象类别（协议 §2.1）。
 type Kind string
 

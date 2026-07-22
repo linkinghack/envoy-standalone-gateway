@@ -365,6 +365,13 @@ metadata: {name: p}
 spec:
   rateLimit: {requests: 1, unit: day}
 `, `invalid value "day"`},
+		{"bad rateLimit burst", `
+apiVersion: esgw/v1alpha1
+kind: Policy
+metadata: {name: p}
+spec:
+  rateLimit: {requests: 1, unit: second, burst: 0}
+`, `rateLimit.burst: must be > 0`},
 		{"bad rateLimit key", `
 apiVersion: esgw/v1alpha1
 kind: Policy
@@ -372,6 +379,27 @@ metadata: {name: p}
 spec:
   rateLimit: {requests: 1, unit: second, key: remoteAddr}
 `, `invalid value "remoteAddr"`},
+		{"empty rateLimit header key", `
+apiVersion: esgw/v1alpha1
+kind: Policy
+metadata: {name: p}
+spec:
+  rateLimit: {requests: 1, unit: second, key: "header:"}
+`, `header:<valid HTTP field name>`},
+		{"invalid rateLimit header name", `
+apiVersion: esgw/v1alpha1
+kind: Policy
+metadata: {name: p}
+spec:
+  rateLimit: {requests: 1, unit: second, key: "header:x tenant"}
+`, `header:<valid HTTP field name>`},
+		{"bad rateLimit maxKeys", `
+apiVersion: esgw/v1alpha1
+kind: Policy
+metadata: {name: p}
+spec:
+  rateLimit: {requests: 1, unit: second, maxKeys: 0}
+`, `maxKeys: must be between 1 and 100000`},
 		{"jwks uri and file", `
 apiVersion: esgw/v1alpha1
 kind: Policy

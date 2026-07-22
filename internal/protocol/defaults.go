@@ -152,7 +152,8 @@ func ApplyDefaults(cs *ConfigSet) {
 	}
 }
 
-// applyRateLimitDefaults 填充 rateLimit 的默认值：burst 默认 = requests，key 默认 clientIP（协议 §3.5）。
+// applyRateLimitDefaults 填充 rateLimit 的默认值：burst 默认 = requests，key 默认 clientIP，
+// maxKeys 默认 10000（协议 §3.5）。
 func applyRateLimitDefaults(r *RateLimitPolicy) {
 	if r == nil {
 		return
@@ -163,5 +164,9 @@ func applyRateLimitDefaults(r *RateLimitPolicy) {
 	}
 	if r.Key == "" {
 		r.Key = RateLimitKeyClientIP
+	}
+	if r.MaxKeys == nil {
+		v := RateLimitDefaultMaxKeys
+		r.MaxKeys = &v
 	}
 }

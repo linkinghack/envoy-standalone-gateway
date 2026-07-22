@@ -251,6 +251,7 @@ spec:
     unit: minute                # second | minute | hour
     burst: 20                   # 默认 = requests
     key: clientIP               # clientIP(默认) | header:<name> —— 限流维度
+    maxKeys: 10000              # 动态 key 桶 LRU 容量；默认 10000，范围 1..100000
 ```
 
 v0/v1 策略类型清单（与 FR-1.3 对齐）：
