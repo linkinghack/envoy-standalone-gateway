@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 )
 
@@ -62,5 +63,32 @@ func TestReplaceDraftRejectsUnsafeAndInvalidSources(t *testing.T) {
 	}
 	if _, err := ReplaceDraft(dataDir, ModeNative, []SourceFile{{Path: "native.yaml", Content: []byte("bogus: true\n")}}, ""); err == nil {
 		t.Fatal("invalid native source accepted")
+	}
+}
+
+func TestMoveDraftPathFallsBackAcrossFilesystems(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	source := filepath.Join(root, "source")
+	target := filepath.Join(root, "target")
+	if err := os.Mkdir(source, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(source, "gateway.yaml"), []byte("kind: Gateway\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	err := moveDraftPath(source, target, func(string, string) error { return syscall.EXDEV })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(source); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("source remains after fallback move: %v", err)
+	}
+	content, err := os.ReadFile(filepath.Join(target, "gateway.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != "kind: Gateway\n" {
+		t.Fatalf("copied content = %q", content)
 	}
 }

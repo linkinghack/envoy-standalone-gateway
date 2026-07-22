@@ -3,10 +3,12 @@ package conf
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 )
 
 // SourceFile is one file in a complete draft replacement.
@@ -117,7 +119,7 @@ func commitDraftStage(dataDir, stage string) error {
 		} else if err != nil {
 			return err
 		}
-		if err := os.Rename(old, filepath.Join(backup, name)); err != nil {
+		if err := moveDraftPath(old, filepath.Join(backup, name), os.Rename); err != nil {
 			restoreDraftBackup(dataDir, backup, moved)
 			return fmt.Errorf("backup draft %s: %w", name, err)
 		}
@@ -132,7 +134,7 @@ func commitDraftStage(dataDir, stage string) error {
 			rollbackDraftInstall(dataDir, backup, installed, moved)
 			return err
 		}
-		if err := os.Rename(source, filepath.Join(dataDir, name)); err != nil {
+		if err := moveDraftPath(source, filepath.Join(dataDir, name), os.Rename); err != nil {
 			rollbackDraftInstall(dataDir, backup, installed, moved)
 			return fmt.Errorf("install draft %s: %w", name, err)
 		}
@@ -151,6 +153,72 @@ func rollbackDraftInstall(dataDir, backup string, installed, moved []string) {
 func restoreDraftBackup(dataDir, backup string, moved []string) {
 	sort.Strings(moved)
 	for _, name := range moved {
-		_ = os.Rename(filepath.Join(backup, name), filepath.Join(dataDir, name))
+		_ = moveDraftPath(filepath.Join(backup, name), filepath.Join(dataDir, name), os.Rename)
 	}
+}
+
+// moveDraftPath falls back to copy-and-remove when a container overlay cannot
+// rename an image-layer directory into its writable layer (EXDEV). The backup
+// is fully copied before the source is removed, preserving rollback safety.
+func moveDraftPath(source, target string, rename func(string, string) error) error {
+	if err := rename(source, target); err == nil {
+		return nil
+	} else if !errors.Is(err, syscall.EXDEV) {
+		return err
+	}
+	if err := copyDraftPath(source, target); err != nil {
+		_ = os.RemoveAll(target)
+		return err
+	}
+	if err := os.RemoveAll(source); err != nil {
+		_ = os.RemoveAll(target)
+		return fmt.Errorf("remove copied draft source: %w", err)
+	}
+	return nil
+}
+
+func copyDraftPath(source, target string) error {
+	info, err := os.Lstat(source)
+	if err != nil {
+		return err
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("draft path %s is a symbolic link", source)
+	}
+	if !info.IsDir() {
+		return copyDraftFile(source, target, info.Mode().Perm())
+	}
+	if err := os.Mkdir(target, info.Mode().Perm()); err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(source)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if err := copyDraftPath(filepath.Join(source, entry.Name()), filepath.Join(target, entry.Name())); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func copyDraftFile(source, target string, mode os.FileMode) error {
+	in, err := os.Open(source)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = in.Close() }()
+	out, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode)
+	if err != nil {
+		return err
+	}
+	if _, err = io.Copy(out, in); err == nil {
+		err = out.Sync()
+	}
+	closeErr := out.Close()
+	if err != nil {
+		return err
+	}
+	return closeErr
 }
