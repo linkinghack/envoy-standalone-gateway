@@ -66,7 +66,8 @@ func (s *Store) UserByUsername(ctx context.Context, username string) (User, erro
 	var created, updated string
 	err := s.db.QueryRowContext(ctx, `SELECT id,username,password_hash,created_at,password_updated_at
 		FROM users WHERE username=?`, username).Scan(
-		&user.ID, &user.Username, &user.PasswordHash, &created, &updated)
+		&user.ID, &user.Username, &user.PasswordHash, &created, &updated,
+	)
 	if err != nil {
 		return User{}, err
 	}
@@ -103,7 +104,8 @@ func (s *Store) SessionByTokenHash(ctx context.Context, tokenHash string) (Sessi
 		s.last_active_at,s.expires_at,s.absolute_expires_at,s.ip,s.user_agent
 		FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token=?`, tokenHash).Scan(
 		&session.TokenHash, &session.UserID, &session.Username, &created, &active, &expires,
-		&absolute, &session.IP, &session.UserAgent)
+		&absolute, &session.IP, &session.UserAgent,
+	)
 	if err != nil {
 		return Session{}, err
 	}

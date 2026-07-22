@@ -269,7 +269,8 @@ func (s *Store) GetVersion(ctx context.Context, seq int64) (Version, error) {
 SELECT seq,created_at,author,message,mode,ir_version,state,parent_seq,rollback_of,stats_json
 FROM versions WHERE seq = ?`, seq).Scan(
 		&v.Seq, &created, &v.Author, &v.Message, &v.Mode, &v.IRVersion,
-		&v.State, &v.ParentSeq, &v.RollbackOf, &v.StatsJSON)
+		&v.State, &v.ParentSeq, &v.RollbackOf, &v.StatsJSON,
+	)
 	if err != nil {
 		return Version{}, err
 	}
@@ -387,7 +388,8 @@ func (s *Store) GetPublishRun(ctx context.Context, id int64) (PublishRun, error)
 	err := s.db.QueryRowContext(ctx, `SELECT id,version_seq,trigger_by,state,base_hash,
 		errors_json,diff_json,created_at,updated_at FROM publish_runs WHERE id=?`, id).Scan(
 		&r.ID, &version, &r.TriggerBy, &r.State, &r.BaseHash, &r.ErrorsJSON, &r.DiffJSON,
-		&created, &updated)
+		&created, &updated,
+	)
 	if err != nil {
 		return PublishRun{}, err
 	}
