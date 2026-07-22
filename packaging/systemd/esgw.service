@@ -1,0 +1,30 @@
+[Unit]
+Description=Envoy Standalone Gateway management plane
+Documentation=https://github.com/linkinghack/envoy-standalone-gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=esgw
+Group=esgw
+EnvironmentFile=-/etc/esgw/esgw.env
+ExecStart=/usr/local/bin/esgw serve -c /etc/esgw/esgw.yaml
+Restart=on-failure
+RestartSec=2s
+KillMode=process
+TimeoutStopSec=15s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/esgw /run/esgw
+RuntimeDirectory=esgw
+RuntimeDirectoryMode=0750
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

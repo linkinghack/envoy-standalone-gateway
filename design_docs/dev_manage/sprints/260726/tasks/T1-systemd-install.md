@@ -14,4 +14,6 @@
 
 ## 进展
 
-- 进行中。
+- 已完成：交付 hardened systemd unit、tmpfiles、默认裸机配置以及幂等 install/upgrade/uninstall 脚本。
+- `DESTDIR` 生命周期测试覆盖原子替换、配置保留、时间戳 binary 回滚副本、默认卸载保留数据和显式 purge。
+- `sh -n`、`systemd-analyze verify` 与 `make packaging-test` 通过；离线 unit 检查仅提示宿主尚未安装目标 binary。

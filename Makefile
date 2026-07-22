@@ -65,6 +65,10 @@ golden-update: ## 刷新 golden 快照（diff 必须人工评审）
 validate-matrix: ## 多版本 envoy --mode validate（版本同源 internal/version 常量）
 	scripts/validate-matrix.sh
 
+.PHONY: packaging-test
+packaging-test: ## systemd 与安装/升级/卸载脚本测试
+	packaging/tests/install_test.sh
+
 .PHONY: tidy
 tidy:
 	go mod tidy
