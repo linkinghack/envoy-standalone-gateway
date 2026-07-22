@@ -14,4 +14,5 @@
 
 ## 进展
 
-- 待开始。
+- 2026-07-22：完成。save→validate→review→publish 闭环、source diagnostics、发布错误反馈及 listeners/clusters/routes/certs 状态视图已落地。
+- awaiting/confirmed/timeout 的权威状态由状态摘要和配置状态 API 驱动，页面不伪造成功态。

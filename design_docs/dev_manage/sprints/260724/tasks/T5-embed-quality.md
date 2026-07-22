@@ -14,4 +14,5 @@
 
 ## 进展
 
-- 待开始。
+- 2026-07-22：完成。语义/focus/reduced-motion、390px 移动导航和桌面布局完成审计；生产产物嵌入单一 Go 二进制，SPA 深链测试通过。
+- 验证：Vitest 5/5；Playwright 桌面/移动共 5 passed、1 个移动专属断言在桌面按预期 skipped；Go build/test/race/vet/golangci-lint 全通过。

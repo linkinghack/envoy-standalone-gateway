@@ -14,4 +14,5 @@
 
 ## 进展
 
-- 待开始。
+- 2026-07-22：完成。Overview 运行信号轨、完整 draft 文件导航、对象类型索引、Monaco YAML 编辑和 `resourceVersion` 保存保护已落地。
+- P0 以完整 YAML 为配置真源；对象索引用于快速确认五类资源，不在浏览器重建服务端 schema。
