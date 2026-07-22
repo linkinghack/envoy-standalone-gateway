@@ -5,8 +5,8 @@
 # 从常量中解析版本，逐版本拉取 envoyproxy/envoy:v<X> 官方镜像，对全部 golden
 # static 产物（testdata/<case>/want-static.yaml）跑 `envoy --mode validate`。
 #
-# 证书相对路径（testdata/certs/...）通过把仓库根挂载为容器工作目录解析，
-# 产物内容与机器无关（A6）。
+# 证书相对路径（testdata/certs/...）通过 tar stdin 复制到一次性容器解析；
+# 不依赖宿主 bind mount，产物内容与机器无关（A6）。
 #
 # 用法：
 #   scripts/validate-matrix.sh            # 全部矩阵版本
@@ -37,6 +37,13 @@ if [[ ${#cases[@]} -eq 0 ]]; then
 fi
 
 fail=0
+log=$(mktemp)
+container=""
+cleanup() {
+	[[ -n "$container" ]] && docker rm -f "$container" >/dev/null 2>&1 || true
+	rm -f "$log"
+}
+trap cleanup EXIT
 for v in $versions; do
 	image="envoyproxy/envoy:v${v}"
 	echo "=== envoy ${v}: docker pull ${image}"
@@ -47,16 +54,19 @@ for v in $versions; do
 	fi
 	for c in "${cases[@]}"; do
 		printf '  validate %-50s ' "$c"
-		# --network none：validate 不需要网络；仓库根只读挂载为工作目录，
-		# 产物内 testdata/certs/... 相对路径据此解析。
-		if docker run --rm --network none -v "$PWD:/workspace:ro" -w /workspace \
-			"$image" --mode validate -c "$c" >/tmp/esgw-validate-matrix.log 2>&1; then
+		# --network none：validate 不需要网络。docker cp 接受 tar stdin，既
+		# 避开 Docker Desktop/WSL bind mount，又保留相对证书路径布局。
+		container=$(docker create --network none -w /workspace "$image" --mode validate -c "$c")
+		if tar -cf - testdata | docker cp - "$container:/workspace" \
+			&& docker start -a "$container" >"$log" 2>&1; then
 			echo "OK"
 		else
 			echo "FAIL"
-			tail -20 /tmp/esgw-validate-matrix.log >&2
+			tail -20 "$log" >&2
 			fail=1
 		fi
+		docker rm "$container" >/dev/null 2>&1 || true
+		container=""
 	done
 done
 
