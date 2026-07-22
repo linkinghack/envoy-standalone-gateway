@@ -28,3 +28,7 @@
 4. `clientCA` 无客户端证书拒绝、有可信证书通过；熔断字段范围校验与 Envoy proto 断言完整；
 5. schema/spec/examples bundle 可在仓库外校验合法与非法样例，生成后 clean diff；
 6. 全量 Go/Web 回归、三版本 Envoy validate 和本 Sprint e2e 通过，无未说明的 unsupported/降级路径。
+
+## 验收结论
+
+2026-07-23 已完成 1–6：三版本 static/ADS 组合流量覆盖全部 P1 数据面能力，协议 bundle 可在仓库外独立复现，Go/Web/协议/Envoy/文档全门禁通过。唯一需显式保留的边界是 P1 SDS Secret 仍引用 filename DataSource，数据面证书材料必须落地到相同路径；跨主机独立材料传输属于已列明的 P2 非范围，不构成静默降级。
